@@ -1,4 +1,4 @@
-namespace EightAID.EIGHTAIDLib.UI
+﻿namespace EightAID.EIGHTAIDLib.UI
 {
     /// <summary>
     /// 会話表示の進行状態を表します。

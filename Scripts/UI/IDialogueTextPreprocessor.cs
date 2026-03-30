@@ -1,4 +1,4 @@
-namespace EightAID.EIGHTAIDLib.UI
+﻿namespace EightAID.EIGHTAIDLib.UI
 {
     /// <summary>
     /// 会話表示前のテキスト加工を担当する抽象です。

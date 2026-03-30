@@ -1,4 +1,4 @@
-namespace EightAID.EIGHTAIDLib.UI
+﻿namespace EightAID.EIGHTAIDLib.UI
 {
     /// <summary>
     /// テキストを加工しない既定実装です。

@@ -1,4 +1,4 @@
-using TMPro;
+﻿using TMPro;
 
 namespace EightAID.EIGHTAIDLib.UI
 {

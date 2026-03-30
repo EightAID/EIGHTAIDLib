@@ -2,53 +2,52 @@ using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-/// <summary>
-/// ゲームパッド（コントローラー）の検出と接続状態の変化を通知する。
-/// </summary>
-public class ControllerDevice : MonoBehaviour
+namespace EightAID.EIGHTAIDLib.Input
 {
-    /// <summary>ゲームパッドが接続されたとき</summary>
-    public static event Action OnGamepadConnected;
-
-    /// <summary>ゲームパッドが切断されたとき</summary>
-    public static event Action OnGamepadDisconnected;
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void Initialize()
+    public class ControllerDevice : MonoBehaviour
     {
-        // ドメインリロード時の二重登録を防ぐ
-        UnityEngine.InputSystem.InputSystem.onDeviceChange -= HandleDeviceChange;
-        UnityEngine.InputSystem.InputSystem.onDeviceChange += HandleDeviceChange;
-    }
+        public static event Action OnGamepadConnected;
+        public static event Action OnGamepadDisconnected;
 
-    private static void HandleDeviceChange(InputDevice device, InputDeviceChange change)
-    {
-        if (device is not Gamepad) return;
-
-        switch (change)
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void Initialize()
         {
-            case InputDeviceChange.Added:
-                Debug.Log($"コントローラー接続: {device.displayName}");
-                OnGamepadConnected?.Invoke();
-                break;
-            case InputDeviceChange.Removed:
-                Debug.Log($"コントローラー切断: {device.displayName}");
-                OnGamepadDisconnected?.Invoke();
-                break;
+            UnityEngine.InputSystem.InputSystem.onDeviceChange -= HandleDeviceChange;
+            UnityEngine.InputSystem.InputSystem.onDeviceChange += HandleDeviceChange;
         }
-    }
 
-    /// <summary>現在ゲームパッドが接続されているか</summary>
-    public static bool IsGamepad()
-    {
-        foreach (var device in UnityEngine.InputSystem.InputSystem.devices)
+        private static void HandleDeviceChange(InputDevice device, InputDeviceChange change)
         {
-            if (device is Gamepad gamepad)
+            if (device is not Gamepad)
             {
-                Debug.Log($"コントローラー検出: {gamepad.displayName}");
-                return true;
+                return;
+            }
+
+            switch (change)
+            {
+                case InputDeviceChange.Added:
+                    Debug.Log($"Gamepad connected: {device.displayName}");
+                    OnGamepadConnected?.Invoke();
+                    break;
+                case InputDeviceChange.Removed:
+                    Debug.Log($"Gamepad disconnected: {device.displayName}");
+                    OnGamepadDisconnected?.Invoke();
+                    break;
             }
         }
-        return false;
+
+        public static bool IsGamepad()
+        {
+            foreach (var device in UnityEngine.InputSystem.InputSystem.devices)
+            {
+                if (device is Gamepad gamepad)
+                {
+                    Debug.Log($"Gamepad detected: {gamepad.displayName}");
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

@@ -1,35 +1,36 @@
 using UnityEngine;
 
-/// <summary>
-/// シングルトン設計をする基底クラス
-/// </summary>
-/// <typeparam name="T"></typeparam>
-public class SingletonMonoBehaviour<T> : MonoBehaviour where T : Component
+namespace EightAID.EIGHTAIDLib.Utility
 {
-    private static T _instance;
-    public static T Instance
+    /// <summary>
+    /// Singleton base class for MonoBehaviours.
+    /// </summary>
+    public class SingletonMonoBehaviour<T> : MonoBehaviour where T : Component
     {
-        get
-        {
-            // すでに存在していればそのインスタンスを返す
-            if (!_instance)
-            {
-                // インスタンスが存在しない場合は自動生成する
-                var singletonObject = new GameObject(typeof(T).Name);
-                _instance = singletonObject.AddComponent<T>();
-            }
-            return _instance;
-        }
-    }
+        private static T _instance;
 
-    protected virtual void Awake()
-    {
-        if (!_instance)//インスタンスがないなら
+        public static T Instance
         {
-            _instance = this as T;
+            get
+            {
+                if (_instance == null)
+                {
+                    var singletonObject = new GameObject(typeof(T).Name);
+                    _instance = singletonObject.AddComponent<T>();
+                }
+
+                return _instance;
+            }
         }
-        else
+
+        protected virtual void Awake()
         {
+            if (_instance == null)
+            {
+                _instance = this as T;
+                return;
+            }
+
             Destroy(gameObject);
         }
     }

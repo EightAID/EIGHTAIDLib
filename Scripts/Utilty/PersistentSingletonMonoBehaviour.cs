@@ -1,22 +1,24 @@
 using UnityEngine;
 
-/// <summary>
-/// DontDestroyOnLoad 付きシングルトン基底クラス。
-/// シーン跨ぎで維持したいマネージャー系（SoundController等）に使う。
-/// </summary>
-public class PersistentSingletonMonoBehaviour<T> : MonoBehaviour where T : Component
+namespace EightAID.EIGHTAIDLib.Utility
 {
-    public static T Instance { get; private set; }
-
-    protected virtual void Awake()
+    /// <summary>
+    /// Singleton base class that survives scene loads.
+    /// </summary>
+    public class PersistentSingletonMonoBehaviour<T> : MonoBehaviour where T : Component
     {
-        if (Instance != null && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
+        public static T Instance { get; private set; }
 
-        Instance = this as T;
-        DontDestroyOnLoad(gameObject);
+        protected virtual void Awake()
+        {
+            if (Instance != null && Instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
+
+            Instance = this as T;
+            DontDestroyOnLoad(gameObject);
+        }
     }
 }

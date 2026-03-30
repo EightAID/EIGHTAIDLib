@@ -3,140 +3,130 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-/// <summary>
-/// パネルが開いている間、入力をそのパネルにスコープするためのコンポーネント。
-/// DeckListPanel / MenuPanel / StillViewerPanel などの GameObject に追加し、
-/// Open() で Push、Close() で Pop を呼ぶ。
-/// InputSystemBase.HandleScopeInput() が NavigationScope.Current を参照して入力を委譲する。
-/// </summary>
-public class NavigationScope : MonoBehaviour
+namespace EightAID.EIGHTAIDLib.UI
 {
-    /// <summary>B ボタン（キャンセル）</summary>
-    public Action OnCancel;
-    /// <summary>LR 軸の左入力 / L ショルダー</summary>
-    public Action OnLRLeft;
-    /// <summary>LR 軸の右入力 / R ショルダー</summary>
-    public Action OnLRRight;
-    /// <summary>Menu ボタン</summary>
-    public Action OnMenu;
-    /// <summary>X ボタン（追加アクション）</summary>
-    public Action OnExtra;
-
-    static readonly List<NavigationScope> _stack = new List<NavigationScope>();
-
-    /// <summary>現在最前面のスコープ（スタックが空なら null）</summary>
-    public static NavigationScope Current =>
-        _stack.Count > 0 ? _stack[_stack.Count - 1] : null;
-
-    GameObject _savedSelected;
-    GameObject _firstSelected;
-    readonly List<GameObject> _selectionHistory = new List<GameObject>();
-
-    /// <summary>
-    /// スタックに積む。firstSelected が非 null なら EventSystem のフォーカスを移す。
-    /// </summary>
-    public void Push(GameObject firstSelected = null)
+    public class NavigationScope : MonoBehaviour
     {
-        _savedSelected = EventSystem.current?.currentSelectedGameObject;
-        _firstSelected = firstSelected;
-        _selectionHistory.Clear();
-        _stack.Add(this);
-        EnsureValidSelection();
-    }
+        public Action OnCancel;
+        public Action OnLRLeft;
+        public Action OnLRRight;
+        public Action OnMenu;
+        public Action OnExtra;
 
-    /// <summary>
-    /// スタックから降ろす。Push 前の選択を復元する。
-    /// </summary>
-    public void Pop()
-    {
-        if (!IsTop) return;
-        _stack.RemoveAt(_stack.Count - 1);
-        EventSystem.current?.SetSelectedGameObject(_savedSelected);
-    }
+        private static readonly List<NavigationScope> Stack = new();
 
-    /// <summary>このスコープがスタックの最前面か</summary>
-    public bool IsTop => _stack.Count > 0 && _stack[_stack.Count - 1] == this;
+        public static NavigationScope Current => Stack.Count > 0 ? Stack[^1] : null;
 
-    public void RememberCurrentSelection()
-    {
-        var current = EventSystem.current?.currentSelectedGameObject;
-        if (!Contains(current))
+        private GameObject _savedSelected;
+        private GameObject _firstSelected;
+        private readonly List<GameObject> _selectionHistory = new();
+
+        public bool IsTop => Stack.Count > 0 && Stack[^1] == this;
+
+        public void Push(GameObject firstSelected = null)
         {
-            return;
+            _savedSelected = EventSystem.current?.currentSelectedGameObject;
+            _firstSelected = firstSelected;
+            _selectionHistory.Clear();
+            Stack.Add(this);
+            EnsureValidSelection();
         }
 
-        if (_selectionHistory.Count > 0 && _selectionHistory[_selectionHistory.Count - 1] == current)
+        public void Pop()
         {
-            return;
-        }
-
-        _selectionHistory.Add(current);
-    }
-
-    public void RestoreRememberedSelection()
-    {
-        var eventSystem = EventSystem.current;
-        if (eventSystem == null)
-        {
-            return;
-        }
-
-        while (_selectionHistory.Count > 0)
-        {
-            int lastIndex = _selectionHistory.Count - 1;
-            GameObject candidate = _selectionHistory[lastIndex];
-            _selectionHistory.RemoveAt(lastIndex);
-
-            if (candidate != null && candidate.activeInHierarchy && Contains(candidate))
+            if (!IsTop)
             {
-                eventSystem.SetSelectedGameObject(candidate);
                 return;
             }
+
+            Stack.RemoveAt(Stack.Count - 1);
+            EventSystem.current?.SetSelectedGameObject(_savedSelected);
         }
 
-        EnsureValidSelection();
-    }
-
-    public bool Contains(GameObject target)
-    {
-        return target != null && target.transform.IsChildOf(transform);
-    }
-
-    public GameObject GetFallbackSelected()
-    {
-        if (_firstSelected != null && _firstSelected.activeInHierarchy)
+        public void RememberCurrentSelection()
         {
-            return _firstSelected;
-        }
-
-        var selectables = GetComponentsInChildren<UnityEngine.UI.Selectable>(true);
-        foreach (var selectable in selectables)
-        {
-            if (selectable != null && selectable.IsInteractable() && selectable.gameObject.activeInHierarchy)
+            var current = EventSystem.current?.currentSelectedGameObject;
+            if (!Contains(current))
             {
-                return selectable.gameObject;
+                return;
             }
+
+            if (_selectionHistory.Count > 0 && _selectionHistory[^1] == current)
+            {
+                return;
+            }
+
+            _selectionHistory.Add(current);
         }
 
-        return null;
-    }
-
-    public void EnsureValidSelection()
-    {
-        var eventSystem = EventSystem.current;
-        if (eventSystem == null)
+        public void RestoreRememberedSelection()
         {
-            return;
+            var eventSystem = EventSystem.current;
+            if (eventSystem == null)
+            {
+                return;
+            }
+
+            while (_selectionHistory.Count > 0)
+            {
+                int lastIndex = _selectionHistory.Count - 1;
+                GameObject candidate = _selectionHistory[lastIndex];
+                _selectionHistory.RemoveAt(lastIndex);
+
+                if (candidate != null && candidate.activeInHierarchy && Contains(candidate))
+                {
+                    eventSystem.SetSelectedGameObject(candidate);
+                    return;
+                }
+            }
+
+            EnsureValidSelection();
         }
 
-        var current = eventSystem.currentSelectedGameObject;
-        if (Contains(current))
+        public bool Contains(GameObject target)
         {
-            return;
+            return target != null && target.transform.IsChildOf(transform);
         }
 
-        eventSystem.SetSelectedGameObject(GetFallbackSelected());
-    }
+        public GameObject GetFallbackSelected()
+        {
+            if (_firstSelected != null && _firstSelected.activeInHierarchy)
+            {
+                return _firstSelected;
+            }
 
-    void OnDestroy() => _stack.Remove(this);
+            var selectables = GetComponentsInChildren<UnityEngine.UI.Selectable>(true);
+            foreach (var selectable in selectables)
+            {
+                if (selectable != null && selectable.IsInteractable() && selectable.gameObject.activeInHierarchy)
+                {
+                    return selectable.gameObject;
+                }
+            }
+
+            return null;
+        }
+
+        public void EnsureValidSelection()
+        {
+            var eventSystem = EventSystem.current;
+            if (eventSystem == null)
+            {
+                return;
+            }
+
+            var current = eventSystem.currentSelectedGameObject;
+            if (Contains(current))
+            {
+                return;
+            }
+
+            eventSystem.SetSelectedGameObject(GetFallbackSelected());
+        }
+
+        private void OnDestroy()
+        {
+            Stack.Remove(this);
+        }
+    }
 }

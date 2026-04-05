@@ -37,8 +37,9 @@ namespace EightAID.EIGHTAIDLib.Audio
 
         private AudioSource EnsureAudioSource(AudioSource source, string sourceName)
         {
-            if (source != null)
+            if (IsUsableAudioSource(source))
             {
+                source.playOnAwake = false;
                 return source;
             }
 
@@ -49,9 +50,31 @@ namespace EightAID.EIGHTAIDLib.Audio
                 target.transform.SetParent(transform, false);
             }
 
-            source = target.GetComponent<AudioSource>() ?? target.AddComponent<AudioSource>();
+            if (!target.TryGetComponent(out source))
+            {
+                source = target.AddComponent<AudioSource>();
+            }
+
             source.playOnAwake = false;
             return source;
+        }
+
+        private static bool IsUsableAudioSource(AudioSource source)
+        {
+            if (source == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                _ = source.enabled;
+                return true;
+            }
+            catch (MissingComponentException)
+            {
+                return false;
+            }
         }
 
         protected static bool IsAlive(AudioSource source) => source != null;

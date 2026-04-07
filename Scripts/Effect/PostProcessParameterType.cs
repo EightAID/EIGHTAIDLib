@@ -9,5 +9,6 @@ namespace EightAID.EIGHTAIDLib.Effect
         VignetteIntensity,
         ChromaticAberrationIntensity,
         LensDistortionIntensity,
+        BlurIntensity,
     }
 }

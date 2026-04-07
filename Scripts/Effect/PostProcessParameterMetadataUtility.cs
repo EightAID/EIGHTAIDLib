@@ -13,6 +13,7 @@ namespace EightAID.EIGHTAIDLib.Effect
             PostProcessParameterType.VignetteIntensity,
             PostProcessParameterType.ChromaticAberrationIntensity,
             PostProcessParameterType.LensDistortionIntensity,
+            PostProcessParameterType.BlurIntensity,
         };
 
         public static float GetMinValue(PostProcessParameterType parameterType)
@@ -22,6 +23,7 @@ namespace EightAID.EIGHTAIDLib.Effect
                 case PostProcessParameterType.Grayscale:
                 case PostProcessParameterType.VignetteIntensity:
                 case PostProcessParameterType.ChromaticAberrationIntensity:
+                case PostProcessParameterType.BlurIntensity:
                     return 0f;
 
                 case PostProcessParameterType.PostExposure:
@@ -47,6 +49,7 @@ namespace EightAID.EIGHTAIDLib.Effect
                 case PostProcessParameterType.Grayscale:
                 case PostProcessParameterType.VignetteIntensity:
                 case PostProcessParameterType.ChromaticAberrationIntensity:
+                case PostProcessParameterType.BlurIntensity:
                     return 1f;
 
                 case PostProcessParameterType.PostExposure:
@@ -70,19 +73,21 @@ namespace EightAID.EIGHTAIDLib.Effect
             switch (parameterType)
             {
                 case PostProcessParameterType.Grayscale:
-                    return "白黒";
+                    return "Grayscale";
                 case PostProcessParameterType.PostExposure:
-                    return "露出";
+                    return "Post Exposure";
                 case PostProcessParameterType.Contrast:
-                    return "コントラスト";
+                    return "Contrast";
                 case PostProcessParameterType.BloomIntensity:
-                    return "ブルーム";
+                    return "Bloom";
                 case PostProcessParameterType.VignetteIntensity:
-                    return "ビネット";
+                    return "Vignette";
                 case PostProcessParameterType.ChromaticAberrationIntensity:
-                    return "色収差";
+                    return "Chromatic Aberration";
                 case PostProcessParameterType.LensDistortionIntensity:
-                    return "レンズ歪み";
+                    return "Lens Distortion";
+                case PostProcessParameterType.BlurIntensity:
+                    return "Blur";
             }
 
             return parameterType.ToString();

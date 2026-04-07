@@ -62,6 +62,13 @@ namespace EightAID.EIGHTAIDLib.Effect
 
                     rawValue = lensDistortion.intensity.value;
                     return true;
+
+                case PostProcessParameterType.BlurIntensity:
+                    if (!profile.TryGet(out DepthOfField depthOfField))
+                        return false;
+
+                    rawValue = depthOfField.gaussianMaxRadius.value;
+                    return true;
             }
 
             return false;
@@ -148,6 +155,24 @@ namespace EightAID.EIGHTAIDLib.Effect
 
                     lensDistortion.intensity.overrideState = true;
                     lensDistortion.intensity.value = Mathf.Clamp(value, -1f, 1f);
+                    return true;
+                }
+
+                case PostProcessParameterType.BlurIntensity:
+                {
+                    DepthOfField depthOfField = GetOrCreate<DepthOfField>(profile, autoCreateMissingOverrides);
+                    if (depthOfField == null)
+                        return false;
+
+                    depthOfField.active = true;
+                    depthOfField.mode.overrideState = true;
+                    depthOfField.mode.value = DepthOfFieldMode.Gaussian;
+                    depthOfField.gaussianStart.overrideState = true;
+                    depthOfField.gaussianStart.value = 0f;
+                    depthOfField.gaussianEnd.overrideState = true;
+                    depthOfField.gaussianEnd.value = 10f;
+                    depthOfField.gaussianMaxRadius.overrideState = true;
+                    depthOfField.gaussianMaxRadius.value = Mathf.Clamp01(value);
                     return true;
                 }
             }

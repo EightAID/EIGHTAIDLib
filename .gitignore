@@ -1,6 +1,3 @@
 # .meta files are intentionally tracked for Unity GUID stability
 .DS_Store
 Thumbs.db
-
-*.meta
-*.cs.meta

@@ -9,6 +9,7 @@ namespace EightAID.EIGHTAIDLib.Input
         public enum GamepadFamily
         {
             None,
+            Keyboard,
             Xbox,
             PlayStation,
             Switch,

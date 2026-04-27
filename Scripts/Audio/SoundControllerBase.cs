@@ -6,6 +6,7 @@ namespace EightAID.EIGHTAIDLib.Audio
 {
     public abstract class SoundControllerBase : MonoBehaviour
     {
+        public static float MasterVolume = 1f;
         public static float BGMVolume = 0.2f;
         public static float SeVolume = 0.2f;
 
@@ -83,19 +84,23 @@ namespace EightAID.EIGHTAIDLib.Audio
         {
             if (IsAlive(bgmSource))
             {
-                bgmSource.volume = BGMVolume;
+                bgmSource.volume = GetEffectiveBgmVolume();
             }
 
             if (IsAlive(sfxSource))
             {
-                sfxSource.volume = SeVolume;
+                sfxSource.volume = GetEffectiveSeVolume();
             }
 
             if (IsAlive(loopSource))
             {
-                loopSource.volume = BGMVolume;
+                loopSource.volume = GetEffectiveBgmVolume();
             }
         }
+
+        protected static float GetEffectiveBgmVolume() => Mathf.Clamp01(MasterVolume) * Mathf.Clamp01(BGMVolume);
+
+        protected static float GetEffectiveSeVolume() => Mathf.Clamp01(MasterVolume) * Mathf.Clamp01(SeVolume);
 
         public void PlayBGM(int index, float duration = 1f)
         {
@@ -168,7 +173,7 @@ namespace EightAID.EIGHTAIDLib.Audio
                     bgmSource.clip = clip;
                     bgmSource.loop = true;
                     bgmSource.Play();
-                    await FadeInAsync(1f, BGMVolume, token);
+                    await FadeInAsync(1f, GetEffectiveBgmVolume(), token);
                     break;
                 case 1:
                     if (IsAlive(sfxSource) && clip != null)

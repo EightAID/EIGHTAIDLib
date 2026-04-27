@@ -12,6 +12,7 @@ namespace EightAID.EIGHTAIDLib.UI
         public Action OnLRRight;
         public Action OnMenu;
         public Action OnExtra;
+        public Func<Vector2, float, bool> OnMoveInput;
 
         private static readonly List<NavigationScope> Stack = new();
 

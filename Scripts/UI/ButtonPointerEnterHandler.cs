@@ -9,6 +9,7 @@ namespace EightAID.EIGHTAIDLib.UI
     public class ButtonPointerEnterHandler : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
         public static Action<AudioClip> PlaySoundCallback;
+        public static Action PlayDefaultSoundCallback;
 
         [Header("Hover Scale Settings")]
         [SerializeField] private float hoverScaleMultiplier = 1.08f;
@@ -55,6 +56,10 @@ namespace EightAID.EIGHTAIDLib.UI
             if (hoverSound != null)
             {
                 PlaySoundCallback?.Invoke(hoverSound);
+            }
+            else
+            {
+                PlayDefaultSoundCallback?.Invoke();
             }
 
             _isHoverScaled = true;

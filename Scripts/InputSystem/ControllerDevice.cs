@@ -13,7 +13,8 @@ namespace EightAID.EIGHTAIDLib.Input
             Xbox,
             PlayStation,
             Switch,
-            Generic
+            Generic,
+            SteamDeck
         }
 
         public static event Action OnGamepadConnected;
@@ -81,6 +82,11 @@ namespace EightAID.EIGHTAIDLib.Input
             }
 
             string source = $"{device.layout} {device.displayName} {device.description.manufacturer} {device.description.product}".ToLowerInvariant();
+
+            if (source.Contains("steam deck") || source.Contains("steamdeck") || source.Contains("valve"))
+            {
+                return GamepadFamily.SteamDeck;
+            }
 
             if (source.Contains("dualshock") || source.Contains("dualsense") || source.Contains("playstation") || source.Contains("sony"))
             {

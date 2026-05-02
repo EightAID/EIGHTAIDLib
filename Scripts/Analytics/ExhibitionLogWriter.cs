@@ -12,6 +12,7 @@ namespace EightAID.EIGHTAIDLib.Analytics
         private const string LogFolderName = "ExhibitionLogs";
         private const string SummaryCsvFileName = "session_summary.csv";
         private const string EventCsvFileName = "session_events.csv";
+        private const string ClearTimeCsvFileName = "demo_clear_times.csv";
         private static readonly Encoding CsvEncoding = new UTF8Encoding(true);
         private static readonly Encoding JsonEncoding = new UTF8Encoding(false);
 
@@ -30,6 +31,7 @@ namespace EightAID.EIGHTAIDLib.Analytics
         public string SummaryJsonPath => Path.Combine(_logDirectory, _sessionPrefix + ".summary.json");
         public string SummaryCsvPath => Path.Combine(_logDirectory, SummaryCsvFileName);
         public string EventCsvPath => Path.Combine(_logDirectory, EventCsvFileName);
+        public string ClearTimeCsvPath => Path.Combine(_logDirectory, ClearTimeCsvFileName);
 
         public void WriteEventJsonl(ExhibitionLogEvent logEvent)
         {
@@ -85,6 +87,20 @@ namespace EightAID.EIGHTAIDLib.Analytics
                 EnsureDirectory();
                 AppendCsvLine(SummaryCsvPath, SummaryCsvHeader, BuildSummaryCsvRow(summary));
             }, "summary csv");
+        }
+
+        public void AppendClearTimeCsv(ExhibitionLogSessionSummary summary)
+        {
+            if (summary == null)
+            {
+                return;
+            }
+
+            SafeWrite(() =>
+            {
+                EnsureDirectory();
+                AppendCsvLine(ClearTimeCsvPath, ClearTimeCsvHeader, BuildClearTimeCsvRow(summary));
+            }, "clear time csv");
         }
 
         public void TrimOldSessionFiles(int maxSessionFiles)
@@ -190,6 +206,7 @@ namespace EightAID.EIGHTAIDLib.Analytics
             "machineId",
             "buildVersion",
             "exhibitionDate",
+            "playMode",
             "saveSlotId",
             "startedAtLocal",
             "startedAtUtc",
@@ -234,6 +251,19 @@ namespace EightAID.EIGHTAIDLib.Analytics
             "payload"
         };
 
+        private static readonly string[] ClearTimeCsvHeader =
+        {
+            "sessionId",
+            "machineId",
+            "buildVersion",
+            "exhibitionDate",
+            "playMode",
+            "saveSlotId",
+            "startedAtLocal",
+            "endedAtLocal",
+            "clearTimeSeconds"
+        };
+
         private static string[] BuildSummaryCsvRow(ExhibitionLogSessionSummary summary)
         {
             return new[]
@@ -242,6 +272,7 @@ namespace EightAID.EIGHTAIDLib.Analytics
                 summary.machineId,
                 summary.buildVersion,
                 summary.exhibitionDate,
+                summary.playMode,
                 summary.saveSlotId,
                 summary.startedAtLocal,
                 summary.startedAtUtc,
@@ -287,6 +318,22 @@ namespace EightAID.EIGHTAIDLib.Analytics
                 logEvent.result,
                 logEvent.reason,
                 logEvent.payload
+            };
+        }
+
+        private static string[] BuildClearTimeCsvRow(ExhibitionLogSessionSummary summary)
+        {
+            return new[]
+            {
+                summary.sessionId,
+                summary.machineId,
+                summary.buildVersion,
+                summary.exhibitionDate,
+                summary.playMode,
+                summary.saveSlotId,
+                summary.startedAtLocal,
+                summary.endedAtLocal,
+                Number(summary.elapsedSeconds)
             };
         }
     }

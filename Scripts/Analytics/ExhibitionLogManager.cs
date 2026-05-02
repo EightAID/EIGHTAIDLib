@@ -13,6 +13,7 @@ namespace EightAID.EIGHTAIDLib.Analytics
         private ExhibitionLogSettings _settings;
         private ExhibitionLogWriter _writer;
         private ExhibitionLogSessionSummary _summary;
+        private string _pendingPlayMode;
         private DateTime _startedAtUtc;
         private DateTime _startedAtLocal;
         private float _startedRealtime;
@@ -96,6 +97,11 @@ namespace EightAID.EIGHTAIDLib.Analytics
             GetOrCreate().RecordStageNodeCleared(stageId, nodeType, displayName);
         }
 
+        public static void SetPlayModeSafe(string playMode)
+        {
+            GetOrCreate().SetPlayMode(playMode);
+        }
+
         protected override void Awake()
         {
             base.Awake();
@@ -145,6 +151,7 @@ namespace EightAID.EIGHTAIDLib.Analytics
                 machineId = ResolveMachineId(),
                 buildVersion = Application.version,
                 exhibitionDate = _startedAtLocal.ToString("yyyy-MM-dd"),
+                playMode = string.IsNullOrWhiteSpace(_pendingPlayMode) ? string.Empty : _pendingPlayMode,
                 saveSlotId = saveSlotId ?? string.Empty,
                 startedAtUtc = ToIso(_startedAtUtc),
                 startedAtLocal = ToIso(_startedAtLocal),
@@ -184,6 +191,26 @@ namespace EightAID.EIGHTAIDLib.Analytics
             {
                 _writer?.AppendSummaryCsv(_summary);
             }
+
+            if (_summary.isCleared == 1)
+            {
+                _writer?.AppendClearTimeCsv(_summary);
+            }
+        }
+
+        public void SetPlayMode(string playMode)
+        {
+            string resolved = string.IsNullOrWhiteSpace(playMode) ? "unknown" : playMode.Trim();
+            _pendingPlayMode = resolved;
+
+            if (_summary == null || _hasEnded)
+            {
+                return;
+            }
+
+            _summary.playMode = resolved;
+            RecordEvent("play_mode_selected", payload: $"playMode={resolved}");
+            WriteSummaryJson();
         }
 
         public void RecordEvent(string eventName, string stageId = null, string eventTitle = null, string reason = null, string result = null, int value = 0, string payload = null)

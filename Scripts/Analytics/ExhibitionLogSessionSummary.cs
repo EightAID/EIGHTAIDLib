@@ -10,6 +10,7 @@ namespace EightAID.EIGHTAIDLib.Analytics
         public string machineId;
         public string buildVersion;
         public string exhibitionDate;
+        public string playMode;
         public string saveSlotId;
         public string startedAtUtc;
         public string startedAtLocal;

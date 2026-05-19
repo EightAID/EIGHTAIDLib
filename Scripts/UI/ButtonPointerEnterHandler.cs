@@ -12,6 +12,7 @@ namespace EightAID.EIGHTAIDLib.UI
         public static Action PlayDefaultSoundCallback;
 
         [Header("Hover Scale Settings")]
+        [SerializeField] private bool useInitialScaleAsBase = true;
         [SerializeField] private float hoverScaleMultiplier = 1.08f;
         [SerializeField] private float tweenDuration = 0.12f;
         [SerializeField] private Ease ease = Ease.OutQuad;
@@ -23,6 +24,7 @@ namespace EightAID.EIGHTAIDLib.UI
         private Button _button;
         private bool _isPointerOver;
         private bool _isHoverScaled;
+        private bool _hasCachedStartScale;
 
         private void Awake()
         {
@@ -33,14 +35,15 @@ namespace EightAID.EIGHTAIDLib.UI
             {
                 Debug.LogError($"{nameof(ButtonPointerEnterHandler)} must be attached to a UI object with RectTransform: {name}");
             }
+            else
+            {
+                CacheStartScale();
+            }
         }
 
         private void Start()
         {
-            if (_rectTransform != null)
-            {
-                _cachedStartScale = _rectTransform.localScale;
-            }
+            CacheStartScale();
         }
 
         private bool IsInteractable() => _button == null || _button.interactable;
@@ -80,19 +83,7 @@ namespace EightAID.EIGHTAIDLib.UI
 
         private bool CanApplyHoverVisual()
         {
-            if (!IsInteractable())
-            {
-                return false;
-            }
-
-            var eventSystem = EventSystem.current;
-            if (eventSystem == null)
-            {
-                return true;
-            }
-
-            var selected = eventSystem.currentSelectedGameObject;
-            return selected == null || selected == gameObject;
+            return IsInteractable();
         }
 
         private void ScaleTo(Vector3 targetScale)
@@ -114,11 +105,36 @@ namespace EightAID.EIGHTAIDLib.UI
             _rectTransform?.DOKill();
             if (_rectTransform != null)
             {
+                if (!_hasCachedStartScale)
+                {
+                    CacheStartScale();
+                }
+
                 _rectTransform.localScale = _cachedStartScale;
             }
 
             _isPointerOver = false;
             _isHoverScaled = false;
+        }
+
+        private void CacheStartScale()
+        {
+            if (_rectTransform == null)
+            {
+                return;
+            }
+
+            if (!useInitialScaleAsBase)
+            {
+                _cachedStartScale = Vector3.one;
+                _hasCachedStartScale = true;
+                return;
+            }
+
+            _cachedStartScale = _rectTransform.localScale == Vector3.zero
+                ? Vector3.one
+                : _rectTransform.localScale;
+            _hasCachedStartScale = true;
         }
 
         private void Update()

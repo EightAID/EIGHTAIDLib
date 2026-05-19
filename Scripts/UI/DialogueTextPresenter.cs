@@ -1,4 +1,5 @@
-﻿using TMPro;
+using TMPro;
+using TMP_Ruby;
 
 namespace EightAID.EIGHTAIDLib.UI
 {
@@ -44,7 +45,7 @@ namespace EightAID.EIGHTAIDLib.UI
             }
 
             _processedText = (preprocessor ?? new DefaultDialogueTextPreprocessor()).Process(text);
-            _displayText.text = _processedText;
+            SetDisplayText(_processedText);
             _displayText.maxVisibleCharacters = 0;
             _displayText.ForceMeshUpdate();
             SetState(DialogueState.Typing);
@@ -73,7 +74,7 @@ namespace EightAID.EIGHTAIDLib.UI
                 return;
             }
 
-            _displayText.text = _processedText;
+            SetDisplayText(_processedText);
             _displayText.ForceMeshUpdate();
             _displayText.maxVisibleCharacters = _displayText.textInfo.characterCount;
         }
@@ -86,11 +87,22 @@ namespace EightAID.EIGHTAIDLib.UI
             _processedText = string.Empty;
             if (_displayText != null)
             {
-                _displayText.text = string.Empty;
+                SetDisplayText(string.Empty);
                 _displayText.maxVisibleCharacters = 0;
             }
 
             SetState(DialogueState.Idle);
+        }
+
+        private void SetDisplayText(string text)
+        {
+            if (_displayText.TryGetComponent(out TextMeshProRuby rubyText))
+            {
+                rubyText.Text = text;
+                return;
+            }
+
+            _displayText.text = text;
         }
 
         /// <summary>

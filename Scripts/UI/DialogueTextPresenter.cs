@@ -10,6 +10,7 @@ namespace EightAID.EIGHTAIDLib.UI
     {
         private readonly TextMeshProUGUI _displayText;
         private string _processedText = string.Empty;
+        private int _preparedCharacterCount;
 
         /// <summary>
         /// 現在の会話表示状態です。
@@ -22,9 +23,9 @@ namespace EightAID.EIGHTAIDLib.UI
         public string CurrentText => _processedText;
 
         /// <summary>
-        /// 現在の総文字数です。
+        /// Prepare時に確定した総文字数です。
         /// </summary>
-        public int TotalCharacterCount => _displayText != null ? _displayText.textInfo.characterCount : 0;
+        public int TotalCharacterCount => _preparedCharacterCount;
 
         /// <summary>
         /// テキスト表示対象を初期化します。
@@ -45,14 +46,15 @@ namespace EightAID.EIGHTAIDLib.UI
             }
 
             _processedText = (preprocessor ?? new DefaultDialogueTextPreprocessor()).Process(text);
+            // TMPのメッシュ更新タイミングに依存しないように、受け取った文字列から先に可視文字数を確定します。
+            _preparedCharacterCount = CountVisibleCharacters(_processedText);
             SetDisplayText(_processedText);
             _displayText.maxVisibleCharacters = 0;
-            _displayText.ForceMeshUpdate();
             SetState(DialogueState.Typing);
         }
 
         /// <summary>
-        /// 次の 1 文字を表示します。
+        /// 指定文字数まで表示します。
         /// </summary>
         public void RevealCharacters(int visibleCharacters)
         {
@@ -75,8 +77,7 @@ namespace EightAID.EIGHTAIDLib.UI
             }
 
             SetDisplayText(_processedText);
-            _displayText.ForceMeshUpdate();
-            _displayText.maxVisibleCharacters = _displayText.textInfo.characterCount;
+            _displayText.maxVisibleCharacters = _preparedCharacterCount;
         }
 
         /// <summary>
@@ -85,6 +86,7 @@ namespace EightAID.EIGHTAIDLib.UI
         public void ClearImmediate()
         {
             _processedText = string.Empty;
+            _preparedCharacterCount = 0;
             if (_displayText != null)
             {
                 SetDisplayText(string.Empty);
@@ -103,6 +105,39 @@ namespace EightAID.EIGHTAIDLib.UI
             }
 
             _displayText.text = text;
+        }
+
+        private static int CountVisibleCharacters(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            int count = 0;
+            bool inRichTextTag = false;
+            foreach (char character in text)
+            {
+                if (character == '<')
+                {
+                    inRichTextTag = true;
+                    continue;
+                }
+
+                if (inRichTextTag)
+                {
+                    if (character == '>')
+                    {
+                        inRichTextTag = false;
+                    }
+
+                    continue;
+                }
+
+                count++;
+            }
+
+            return count;
         }
 
         /// <summary>

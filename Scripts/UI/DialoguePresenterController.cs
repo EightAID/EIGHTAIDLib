@@ -97,6 +97,12 @@ namespace EightAID.EIGHTAIDLib.UI
         private async UniTask RunTypingAsync(DialogueDisplayOptions options, CancellationToken cancellationToken)
         {
             int totalCharacters = _textPresenter.TotalCharacterCount;
+            if (totalCharacters <= 0)
+            {
+                _textPresenter.RevealAll();
+                return;
+            }
+
             for (int visibleCharacters = 0; visibleCharacters < totalCharacters; visibleCharacters++)
             {
                 _textPresenter.RevealCharacters(visibleCharacters + 1);

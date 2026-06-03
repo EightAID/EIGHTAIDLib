@@ -63,8 +63,10 @@ public static class DebugUiFactory
         rowLayout.spacing = 8f;
         rowLayout.childControlWidth = true;
         rowLayout.childForceExpandWidth = false;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandHeight = false;
 
-        row.GetComponent<LayoutElement>().preferredHeight = 36f;
+        row.GetComponent<LayoutElement>().preferredHeight = 30f;
 
         Text labelText = CreateLabel(row.GetComponent<RectTransform>(), font, 14, TextAnchor.MiddleLeft, Color.white);
         labelText.text = label;
@@ -88,7 +90,7 @@ public static class DebugUiFactory
         image.color = new Color(1f, 1f, 1f, 0.14f);
 
         LayoutElement layout = fieldObject.GetComponent<LayoutElement>();
-        layout.preferredHeight = 34f;
+        layout.preferredHeight = 30f;
         layout.flexibleWidth = 1f;
 
         Text text = CreateInnerText(fieldObject.transform, font, Color.white);
@@ -115,7 +117,7 @@ public static class DebugUiFactory
     {
         var row = new GameObject(label + "SliderRow", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         row.transform.SetParent(parent, false);
-        row.GetComponent<LayoutElement>().preferredHeight = 38f;
+        row.GetComponent<LayoutElement>().preferredHeight = 32f;
 
         HorizontalLayoutGroup rowLayout = row.GetComponent<HorizontalLayoutGroup>();
         rowLayout.spacing = 8f;
@@ -133,11 +135,11 @@ public static class DebugUiFactory
         LayoutElement sliderLayout = sliderObject.GetComponent<LayoutElement>();
         sliderLayout.preferredWidth = 300f;
         sliderLayout.flexibleWidth = 1f;
-        sliderLayout.preferredHeight = 34f;
+        sliderLayout.preferredHeight = 30f;
 
         var background = new GameObject("Background", typeof(RectTransform), typeof(Image));
         background.transform.SetParent(sliderObject.transform, false);
-        Stretch(background.GetComponent<RectTransform>(), 0f, 13f, 0f, 13f);
+        Stretch(background.GetComponent<RectTransform>(), 0f, 12f, 0f, 12f);
         Image backgroundImage = background.GetComponent<Image>();
         backgroundImage.sprite = sprite;
         backgroundImage.type = Image.Type.Sliced;
@@ -145,7 +147,7 @@ public static class DebugUiFactory
 
         var fillArea = new GameObject("Fill Area", typeof(RectTransform));
         fillArea.transform.SetParent(sliderObject.transform, false);
-        Stretch(fillArea.GetComponent<RectTransform>(), 0f, 13f, 0f, 13f);
+        Stretch(fillArea.GetComponent<RectTransform>(), 0f, 12f, 0f, 12f);
 
         var fill = new GameObject("Fill", typeof(RectTransform), typeof(Image));
         fill.transform.SetParent(fillArea.transform, false);
@@ -162,7 +164,7 @@ public static class DebugUiFactory
         var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
         handle.transform.SetParent(handleArea.transform, false);
         RectTransform handleRect = handle.GetComponent<RectTransform>();
-        handleRect.sizeDelta = new Vector2(18f, 30f);
+        handleRect.sizeDelta = new Vector2(16f, 26f);
         Image handleImage = handle.GetComponent<Image>();
         handleImage.sprite = sprite;
         handleImage.type = Image.Type.Sliced;
@@ -191,12 +193,14 @@ public static class DebugUiFactory
     {
         var row = new GameObject(label + "ToggleRow", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         row.transform.SetParent(parent, false);
-        row.GetComponent<LayoutElement>().preferredHeight = 34f;
+        row.GetComponent<LayoutElement>().preferredHeight = 30f;
 
         HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
         layout.spacing = 8f;
         layout.childControlWidth = true;
         layout.childForceExpandWidth = false;
+        layout.childControlHeight = true;
+        layout.childForceExpandHeight = false;
 
         Text labelText = CreateLabel(row.GetComponent<RectTransform>(), font, 14, TextAnchor.MiddleLeft, Color.white);
         labelText.text = label;
@@ -204,8 +208,8 @@ public static class DebugUiFactory
 
         var toggleObject = new GameObject("Toggle", typeof(RectTransform), typeof(Toggle), typeof(LayoutElement));
         toggleObject.transform.SetParent(row.transform, false);
-        toggleObject.GetComponent<LayoutElement>().preferredWidth = 34f;
-        toggleObject.GetComponent<LayoutElement>().preferredHeight = 34f;
+        toggleObject.GetComponent<LayoutElement>().preferredWidth = 30f;
+        toggleObject.GetComponent<LayoutElement>().preferredHeight = 30f;
 
         var backgroundObject = new GameObject("Background", typeof(RectTransform), typeof(Image));
         backgroundObject.transform.SetParent(toggleObject.transform, false);
@@ -228,12 +232,14 @@ public static class DebugUiFactory
     {
         var row = new GameObject(label + "DropdownRow", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         row.transform.SetParent(parent, false);
-        row.GetComponent<LayoutElement>().preferredHeight = 36f;
+        row.GetComponent<LayoutElement>().preferredHeight = 30f;
 
         HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
         layout.spacing = 8f;
         layout.childControlWidth = true;
         layout.childForceExpandWidth = false;
+        layout.childControlHeight = true;
+        layout.childForceExpandHeight = false;
 
         Text labelText = CreateLabel(row.GetComponent<RectTransform>(), font, 14, TextAnchor.MiddleLeft, Color.white);
         labelText.text = label;
@@ -246,12 +252,14 @@ public static class DebugUiFactory
     {
         var row = new GameObject(label + "ChoiceRow", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         row.transform.SetParent(parent, false);
-        row.GetComponent<LayoutElement>().preferredHeight = 36f;
+        row.GetComponent<LayoutElement>().preferredHeight = 30f;
 
         HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
         layout.spacing = 8f;
         layout.childControlWidth = true;
         layout.childForceExpandWidth = false;
+        layout.childControlHeight = true;
+        layout.childForceExpandHeight = false;
 
         Text labelText = CreateLabel(row.GetComponent<RectTransform>(), font, 14, TextAnchor.MiddleLeft, Color.white);
         labelText.text = label;
@@ -268,7 +276,7 @@ public static class DebugUiFactory
         LayoutElement buttonLayout = buttonObject.GetComponent<LayoutElement>();
         buttonLayout.preferredWidth = 420f;
         buttonLayout.flexibleWidth = 1f;
-        buttonLayout.preferredHeight = 34f;
+        buttonLayout.preferredHeight = 30f;
 
         valueText = CreateInnerText(buttonObject.transform, font, Color.white);
         Stretch(valueText.rectTransform, 10f, 6f, 34f, 6f);
@@ -326,7 +334,7 @@ public static class DebugUiFactory
         contentLayout.padding = new RectOffset(5, 5, 5, 5);
         contentLayout.childControlWidth = true;
         contentLayout.childForceExpandWidth = true;
-        contentLayout.childControlHeight = false;
+        contentLayout.childControlHeight = true;
         contentLayout.childForceExpandHeight = false;
         contentObject.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 

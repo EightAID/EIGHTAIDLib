@@ -74,6 +74,10 @@ public sealed class DebugCommand
         return new Builder(id, label);
     }
 
+    /// <summary>
+    /// RuntimeDebugPanel に表示するコマンドを組み立てるための Builder です。
+    /// 引数定義、カテゴリ、実行可否、実行処理を宣言的につなげて登録できます。
+    /// </summary>
     public sealed class Builder
     {
         private readonly string _id;

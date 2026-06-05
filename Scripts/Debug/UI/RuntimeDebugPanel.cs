@@ -11,6 +11,12 @@ using UnityEngine.UI;
 using UnityEditor;
 #endif
 
+/// <summary>
+/// 実行中のゲームに重ねて表示する汎用デバッグパネルです。
+/// コマンド本体は DebugCommandRegistry へ登録し、このパネルは検索、カテゴリ絞り込み、
+/// 引数入力、実行ログ表示だけを担当します。ゲーム固有処理はここへ直接書かず、
+/// プロジェクト側の IDebugCommandModule に分離してください。
+/// </summary>
 public sealed class RuntimeDebugPanel : MonoBehaviour
 {
     private const KeyCode ToggleKey = KeyCode.F1;
@@ -71,6 +77,14 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         }
 
         Time.timeScale = clamped;
+    }
+
+    public static void HideNow()
+    {
+        if (_instance != null)
+        {
+            _instance.SetVisible(false);
+        }
     }
 
     private void Awake()
@@ -370,19 +384,21 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
     private static RectTransform CreateCategoryFilterBar(RectTransform parent)
     {
-        var bar = new GameObject("CategoryFilterBar", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        var bar = new GameObject("CategoryFilterBar", typeof(RectTransform), typeof(GridLayoutGroup), typeof(LayoutElement));
         bar.transform.SetParent(parent, false);
 
         LayoutElement layoutElement = bar.GetComponent<LayoutElement>();
-        layoutElement.preferredHeight = 34f;
+        layoutElement.preferredHeight = 68f;
         layoutElement.flexibleWidth = 1f;
 
-        HorizontalLayoutGroup layout = bar.GetComponent<HorizontalLayoutGroup>();
-        layout.spacing = 6f;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandWidth = false;
-        layout.childForceExpandHeight = true;
+        GridLayoutGroup layout = bar.GetComponent<GridLayoutGroup>();
+        layout.cellSize = new Vector2(104f, 30f);
+        layout.spacing = new Vector2(6f, 6f);
+        layout.startCorner = GridLayoutGroup.Corner.UpperLeft;
+        layout.startAxis = GridLayoutGroup.Axis.Horizontal;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        layout.constraintCount = 7;
         return bar.GetComponent<RectTransform>();
     }
 
@@ -396,6 +412,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         bool wasVisible = _panelRoot.gameObject.activeSelf;
         if (visible && !wasVisible)
         {
+            DebugScenarioTestPanel.HideNow();
             _resumeTimeScale = Time.timeScale;
             _hasPausedGame = true;
             Time.timeScale = 0f;
@@ -1320,6 +1337,11 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         if (category.Contains("システム") || category.Contains("System"))
         {
             return new Color(0.95f, 0.42f, 0.44f);
+        }
+
+        if (category.Contains("テスト") || category.Contains("Test"))
+        {
+            return new Color(0.40f, 0.86f, 0.62f);
         }
 
         if (category.Contains("セーブ") || category.Contains("Save"))

@@ -21,6 +21,16 @@ public enum DebugScenarioTestStatus
     Skipped,
 }
 
+public enum DebugScenarioTestFailureKind
+{
+    None,
+    Assertion,
+    Infrastructure,
+    Precondition,
+    TestCaseDefinition,
+    Exception,
+}
+
 public enum DebugScenarioArgumentKind
 {
     String,
@@ -177,6 +187,7 @@ public sealed class DebugScenarioTestCase : ScriptableObject
 public sealed class DebugScenarioTestStepResult
 {
     public DebugScenarioTestStatus Status { get; set; }
+    public DebugScenarioTestFailureKind FailureKind { get; set; } = DebugScenarioTestFailureKind.None;
     public string StepName { get; set; }
     public string CommandId { get; set; }
     public string Message { get; set; }
@@ -192,9 +203,12 @@ public sealed class DebugScenarioTestStepResult
 public sealed class DebugScenarioTestRunResult
 {
     public DebugScenarioTestStatus Status { get; set; } = DebugScenarioTestStatus.NotRun;
+    public DebugScenarioTestFailureKind FailureKind { get; set; } = DebugScenarioTestFailureKind.None;
     public string TestId { get; set; }
     public string TestName { get; set; }
     public string Message { get; set; }
+    public int FailedStepIndex { get; set; } = -1;
+    public string FailureInstruction { get; set; }
     public float DurationSeconds { get; set; }
     public List<DebugScenarioTestStepResult> StepResults { get; } = new List<DebugScenarioTestStepResult>();
 }

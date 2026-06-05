@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -29,6 +30,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
 
     private RectTransform _panelRoot;
     private RectTransform _categoryContent;
+    private RectTransform _resultFilterContent;
     private RectTransform _testListContent;
     private RectTransform _stepListContent;
     private InputField _searchInput;
@@ -36,13 +38,20 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
     private Text _summaryText;
     private Text _detailText;
     private Text _statusText;
+    private Text _resultSummaryText;
+    private Text _llmInstructionText;
     private Button _runSelectedButton;
+    private Button _runSelectionButton;
+    private Button _runCategoryButton;
     private Button _runAllButton;
+    private Button _copyInstructionButton;
 
     private IReadOnlyList<DebugScenarioTestCase> _allTests = Array.Empty<DebugScenarioTestCase>();
     private IReadOnlyList<DebugScenarioTestCase> _visibleTests = Array.Empty<DebugScenarioTestCase>();
+    private readonly HashSet<string> _rangeSelectedTestIds = new HashSet<string>(StringComparer.Ordinal);
     private DebugScenarioTestCase _selectedTest;
     private string _selectedCategory = string.Empty;
+    private DebugScenarioTestStatus? _selectedResultStatus;
     private bool _isRunning;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -137,13 +146,19 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         _searchInput.textComponent.fontSize = 18;
         _searchInput.onValueChanged.AddListener(_ => RefreshTestList());
 
-        _runSelectedButton = DebugUiFactory.CreateButton(header, font, sprite, "選択を実行", RunSelected, 140f, 38f);
-        _runAllButton = DebugUiFactory.CreateButton(header, font, sprite, "全部実行", RunAll, 120f, 38f);
+        _runSelectedButton = DebugUiFactory.CreateButton(header, font, sprite, "選択1件", RunSelected, 110f, 38f);
+        _runSelectionButton = DebugUiFactory.CreateButton(header, font, sprite, "選択範囲", RunSelection, 120f, 38f);
+        _runCategoryButton = DebugUiFactory.CreateButton(header, font, sprite, "カテゴリ", RunCategory, 110f, 38f);
+        _runAllButton = DebugUiFactory.CreateButton(header, font, sprite, "表示中全部", RunAll, 120f, 38f);
         Button clearButton = DebugUiFactory.CreateButton(header, font, sprite, "結果クリア", ClearResults, 120f, 38f);
         clearButton.GetComponent<Image>().color = new Color(0.24f, 0.25f, 0.28f, 0.96f);
 
         CreateSectionTitle(left, font, "カテゴリ");
         _categoryContent = CreateCategoryBar(left);
+        CreateSectionTitle(left, font, "結果フィルタ");
+        _resultFilterContent = CreateResultFilterBar(left);
+        _resultSummaryText = DebugUiFactory.CreateLabel(left, font, 13, TextAnchor.MiddleLeft, new Color(0.70f, 0.78f, 0.84f));
+        _resultSummaryText.GetComponent<LayoutElement>().preferredHeight = 24f;
         CreateSectionTitle(left, font, "テストケース");
         _testListContent = DebugUiFactory.CreateScrollContent(left, sprite, 650f, true);
         SetScrollBackground(_testListContent, new Color(0.065f, 0.075f, 0.082f, 0.98f));
@@ -163,7 +178,12 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         SetScrollBackground(_stepListContent, new Color(0.060f, 0.068f, 0.075f, 0.98f));
 
         _statusText = DebugUiFactory.CreateLabel(right, font, 15, TextAnchor.UpperLeft, new Color(0.95f, 0.86f, 0.55f));
-        _statusText.GetComponent<LayoutElement>().preferredHeight = 56f;
+        _statusText.GetComponent<LayoutElement>().preferredHeight = 92f;
+
+        CreateSectionTitle(right, font, "失敗分析 / LLM修正依頼");
+        _llmInstructionText = DebugUiFactory.CreateLabel(right, font, 12, TextAnchor.UpperLeft, new Color(0.82f, 0.88f, 0.94f));
+        _llmInstructionText.GetComponent<LayoutElement>().preferredHeight = 120f;
+        _copyInstructionButton = DebugUiFactory.CreateButton(right, font, sprite, "修正依頼文をコピー", CopyFailureInstruction, 220f, 34f);
 
         LoadTests();
         RefreshTestList();
@@ -213,11 +233,18 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         Sprite sprite = GetFallbackSprite();
         string search = _searchInput != null ? _searchInput.text : string.Empty;
         RefreshCategories(font, sprite);
+        RefreshResultFilters(font, sprite);
+        RefreshResultSummary();
 
         IEnumerable<DebugScenarioTestCase> tests = _allTests;
         if (!string.IsNullOrWhiteSpace(_selectedCategory))
         {
             tests = tests.Where(test => string.Equals(test.Category, _selectedCategory, StringComparison.Ordinal));
+        }
+
+        if (_selectedResultStatus.HasValue)
+        {
+            tests = tests.Where(test => ResolveStatus(test) == _selectedResultStatus.Value);
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -229,7 +256,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         foreach (DebugScenarioTestCase test in _visibleTests)
         {
             DebugScenarioTestCase captured = test;
-            Image row = CreateTestRow(_testListContent, font, sprite, test, () => SelectTest(captured));
+            Image row = CreateTestRow(_testListContent, font, sprite, test, () => HandleTestRowClick(captured));
             _testRows.Add(row);
         }
 
@@ -280,14 +307,66 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
     {
         bool selected = string.Equals(_selectedCategory, value, StringComparison.Ordinal);
         Color categoryColor = GetCategoryColor(value);
-        Button button = DebugUiFactory.CreateButton(_categoryContent, font, sprite, label, () =>
+        Button button = DebugUiFactory.CreateButton(_categoryContent, font, sprite, ShortenCategoryLabel(label), () =>
         {
             _selectedCategory = value;
             RefreshTestList();
-        }, 150f, 30f);
+        }, 92f, 34f);
         button.GetComponent<Image>().color = selected
             ? new Color(categoryColor.r, categoryColor.g, categoryColor.b, 0.96f)
             : new Color(categoryColor.r, categoryColor.g, categoryColor.b, 0.34f);
+
+        Text buttonText = button.GetComponentInChildren<Text>();
+        if (buttonText != null)
+        {
+            buttonText.fontSize = 11;
+            buttonText.alignment = TextAnchor.MiddleCenter;
+            buttonText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            buttonText.verticalOverflow = VerticalWrapMode.Truncate;
+            DebugUiFactory.Stretch(buttonText.rectTransform, 4f, 0f, 4f, 0f);
+        }
+    }
+
+    private void RefreshResultFilters(Font font, Sprite sprite)
+    {
+        if (_resultFilterContent == null)
+        {
+            return;
+        }
+
+        foreach (Transform child in _resultFilterContent)
+        {
+            Destroy(child.gameObject);
+        }
+
+        CreateResultFilterButton("すべて", null, font, sprite);
+        CreateResultFilterButton("未実行", DebugScenarioTestStatus.NotRun, font, sprite);
+        CreateResultFilterButton("成功", DebugScenarioTestStatus.Passed, font, sprite);
+        CreateResultFilterButton("失敗", DebugScenarioTestStatus.Failed, font, sprite);
+        CreateResultFilterButton("エラー", DebugScenarioTestStatus.Error, font, sprite);
+        CreateResultFilterButton("実行中", DebugScenarioTestStatus.Running, font, sprite);
+    }
+
+    private void CreateResultFilterButton(string label, DebugScenarioTestStatus? status, Font font, Sprite sprite)
+    {
+        bool selected = _selectedResultStatus == status;
+        Color color = status.HasValue ? GetStatusColor(status.Value) : new Color(0.45f, 0.62f, 0.74f);
+        Button button = DebugUiFactory.CreateButton(_resultFilterContent, font, sprite, label, () =>
+        {
+            _selectedResultStatus = status;
+            RefreshTestList();
+        }, 92f, 30f);
+        button.GetComponent<Image>().color = selected
+            ? new Color(color.r, color.g, color.b, 0.92f)
+            : new Color(color.r, color.g, color.b, 0.28f);
+
+        Text buttonText = button.GetComponentInChildren<Text>();
+        if (buttonText != null)
+        {
+            buttonText.fontSize = 12;
+            buttonText.alignment = TextAnchor.MiddleCenter;
+            DebugUiFactory.Stretch(buttonText.rectTransform, 4f, 0f, 4f, 0f);
+        }
     }
 
     private void SelectTest(DebugScenarioTestCase test)
@@ -295,6 +374,93 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         _selectedTest = test;
         UpdateRowSelection();
         RefreshDetail();
+    }
+
+    private void HandleTestRowClick(DebugScenarioTestCase test)
+    {
+        if (test == null)
+        {
+            SelectTest(null);
+            return;
+        }
+
+        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        bool additive = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
+                        Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand);
+
+        if (shift && _selectedTest != null)
+        {
+            SelectRange(_selectedTest, test);
+        }
+        else if (additive)
+        {
+            ToggleRangeSelection(test);
+        }
+        else
+        {
+            _rangeSelectedTestIds.Clear();
+            AddRangeSelection(test);
+        }
+
+        SelectTest(test);
+    }
+
+    private void SelectRange(DebugScenarioTestCase from, DebugScenarioTestCase to)
+    {
+        int fromIndex = IndexOfVisibleTest(from);
+        int toIndex = IndexOfVisibleTest(to);
+        if (fromIndex < 0 || toIndex < 0)
+        {
+            AddRangeSelection(to);
+            return;
+        }
+
+        _rangeSelectedTestIds.Clear();
+        int min = Mathf.Min(fromIndex, toIndex);
+        int max = Mathf.Max(fromIndex, toIndex);
+        for (int i = min; i <= max; i++)
+        {
+            AddRangeSelection(_visibleTests[i]);
+        }
+    }
+
+    private void ToggleRangeSelection(DebugScenarioTestCase test)
+    {
+        if (test == null || string.IsNullOrWhiteSpace(test.Id))
+        {
+            return;
+        }
+
+        if (!_rangeSelectedTestIds.Remove(test.Id))
+        {
+            _rangeSelectedTestIds.Add(test.Id);
+        }
+    }
+
+    private void AddRangeSelection(DebugScenarioTestCase test)
+    {
+        if (test != null && !string.IsNullOrWhiteSpace(test.Id))
+        {
+            _rangeSelectedTestIds.Add(test.Id);
+        }
+    }
+
+    private int IndexOfVisibleTest(DebugScenarioTestCase test)
+    {
+        if (test == null)
+        {
+            return -1;
+        }
+
+        for (int i = 0; i < _visibleTests.Count; i++)
+        {
+            if (_visibleTests[i] == test)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private void RefreshDetail()
@@ -310,7 +476,9 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             _summaryText.text = "条件に一致するテストケースがありません。";
             _detailText.text = string.Empty;
             _statusText.text = string.Empty;
+            _llmInstructionText.text = string.Empty;
             _runSelectedButton.interactable = false;
+            _copyInstructionButton.interactable = false;
             return;
         }
 
@@ -327,7 +495,12 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         _statusText.color = GetStatusColor(runResult != null ? runResult.Status : DebugScenarioTestStatus.NotRun);
         _statusText.text = runResult == null
             ? "未実行"
-            : $"{StatusMark(runResult.Status)} {runResult.Message} ({runResult.DurationSeconds:0.00}s)";
+            : BuildStatusDetail(_selectedTest, runResult);
+
+        _llmInstructionText.text = BuildFailureInstructionText(_selectedTest, runResult);
+        _copyInstructionButton.interactable = !_isRunning && runResult != null &&
+                                             (runResult.Status == DebugScenarioTestStatus.Failed ||
+                                              runResult.Status == DebugScenarioTestStatus.Error);
 
         Font font = LoadFont();
         Sprite sprite = GetFallbackSprite();
@@ -361,6 +534,54 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         RunAllAsync().Forget();
     }
 
+    private void RunSelection()
+    {
+        RunSelectionAsync().Forget();
+    }
+
+    private void RunCategory()
+    {
+        RunCategoryAsync().Forget();
+    }
+
+    private async UniTaskVoid RunSelectionAsync()
+    {
+        if (_isRunning)
+        {
+            return;
+        }
+
+        IReadOnlyList<DebugScenarioTestCase> tests = GetRangeSelectedTests();
+        if (tests.Count == 0 && _selectedTest != null)
+        {
+            tests = new[] { _selectedTest };
+        }
+
+        await RunManyAsync(tests);
+    }
+
+    private async UniTaskVoid RunCategoryAsync()
+    {
+        if (_isRunning)
+        {
+            return;
+        }
+
+        string category = !string.IsNullOrWhiteSpace(_selectedCategory)
+            ? _selectedCategory
+            : _selectedTest != null ? _selectedTest.Category : string.Empty;
+        if (string.IsNullOrWhiteSpace(category))
+        {
+            await RunManyAsync(Array.Empty<DebugScenarioTestCase>());
+            return;
+        }
+
+        DebugScenarioTestCase[] tests = _allTests
+            .Where(test => test != null && string.Equals(test.Category, category, StringComparison.Ordinal))
+            .ToArray();
+        await RunManyAsync(tests);
+    }
+
     private async UniTaskVoid RunAllAsync()
     {
         if (_isRunning)
@@ -368,11 +589,26 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             return;
         }
 
+        IReadOnlyList<DebugScenarioTestCase> tests = _visibleTests.Count > 0 ? _visibleTests : _allTests;
+        await RunManyAsync(tests);
+    }
+
+    private async UniTask RunManyAsync(IReadOnlyList<DebugScenarioTestCase> tests)
+    {
+        if (tests == null || tests.Count == 0 || _isRunning)
+        {
+            return;
+        }
+
         _isRunning = true;
         SetButtonsInteractable(false);
-        IReadOnlyList<DebugScenarioTestCase> tests = _visibleTests.Count > 0 ? _visibleTests : _allTests;
         foreach (DebugScenarioTestCase test in tests)
         {
+            if (test == null)
+            {
+                continue;
+            }
+
             SelectTest(test);
             await RunOneAsync(test, keepRunningFlag: true);
             await UniTask.Yield();
@@ -381,6 +617,18 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         _isRunning = false;
         SetButtonsInteractable(true);
         RefreshTestList();
+    }
+
+    private IReadOnlyList<DebugScenarioTestCase> GetRangeSelectedTests()
+    {
+        if (_rangeSelectedTestIds.Count == 0)
+        {
+            return Array.Empty<DebugScenarioTestCase>();
+        }
+
+        return _visibleTests
+            .Where(test => test != null && _rangeSelectedTestIds.Contains(test.Id))
+            .ToArray();
     }
 
     private async UniTask RunOneAsync(DebugScenarioTestCase test, bool keepRunningFlag = false)
@@ -426,6 +674,20 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         RefreshTestList();
     }
 
+    private void CopyFailureInstruction()
+    {
+        if (_llmInstructionText == null || string.IsNullOrWhiteSpace(_llmInstructionText.text))
+        {
+            return;
+        }
+
+        GUIUtility.systemCopyBuffer = _llmInstructionText.text;
+        if (_statusText != null)
+        {
+            _statusText.text += "\n修正依頼文をクリップボードにコピーしました。";
+        }
+    }
+
     private void SetButtonsInteractable(bool interactable)
     {
         if (_runSelectedButton != null)
@@ -433,9 +695,29 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             _runSelectedButton.interactable = interactable && _selectedTest != null;
         }
 
+        if (_runSelectionButton != null)
+        {
+            _runSelectionButton.interactable = interactable && (_rangeSelectedTestIds.Count > 0 || _selectedTest != null);
+        }
+
+        if (_runCategoryButton != null)
+        {
+            _runCategoryButton.interactable = interactable &&
+                                             (!string.IsNullOrWhiteSpace(_selectedCategory) ||
+                                              (_selectedTest != null && !string.IsNullOrWhiteSpace(_selectedTest.Category)));
+        }
+
         if (_runAllButton != null)
         {
             _runAllButton.interactable = interactable;
+        }
+
+        if (_copyInstructionButton != null)
+        {
+            DebugScenarioTestRunResult result = GetResult(_selectedTest);
+            _copyInstructionButton.interactable = interactable && result != null &&
+                                                 (result.Status == DebugScenarioTestStatus.Failed ||
+                                                  result.Status == DebugScenarioTestStatus.Error);
         }
     }
 
@@ -459,6 +741,33 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
     {
         return !string.IsNullOrEmpty(source) &&
                source.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private DebugScenarioTestStatus ResolveStatus(DebugScenarioTestCase test)
+    {
+        DebugScenarioTestRunResult result = GetResult(test);
+        return result != null ? result.Status : DebugScenarioTestStatus.NotRun;
+    }
+
+    private void RefreshResultSummary()
+    {
+        if (_resultSummaryText == null)
+        {
+            return;
+        }
+
+        int total = _allTests.Count;
+        int passed = CountStatus(DebugScenarioTestStatus.Passed);
+        int failed = CountStatus(DebugScenarioTestStatus.Failed);
+        int error = CountStatus(DebugScenarioTestStatus.Error);
+        int running = CountStatus(DebugScenarioTestStatus.Running);
+        int notRun = total - _results.Values.Count(result => result.Status != DebugScenarioTestStatus.NotRun);
+        _resultSummaryText.text = $"結果: 成功 {passed} / 失敗 {failed} / エラー {error} / 実行中 {running} / 未実行 {Math.Max(0, notRun)}";
+    }
+
+    private int CountStatus(DebugScenarioTestStatus status)
+    {
+        return _allTests.Count(test => ResolveStatus(test) == status);
     }
 
     private Image CreateTestRow(RectTransform parent, Font font, Sprite sprite, DebugScenarioTestCase test, Action onClick)
@@ -511,6 +820,63 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         return image;
     }
 
+    private static string BuildStatusDetail(DebugScenarioTestCase test, DebugScenarioTestRunResult result)
+    {
+        var builder = new StringBuilder();
+        builder.Append($"{StatusMark(result.Status)} {result.Message} ({result.DurationSeconds:0.00}s)");
+        if (result.Status == DebugScenarioTestStatus.Failed || result.Status == DebugScenarioTestStatus.Error)
+        {
+            builder.AppendLine();
+            builder.Append($"分類: {FailureKindLabel(result.FailureKind)}");
+            if (result.FailedStepIndex >= 0 && result.FailedStepIndex < test.Steps.Count)
+            {
+                DebugScenarioTestStep step = test.Steps[result.FailedStepIndex];
+                builder.AppendLine();
+                builder.Append($"失敗ステップ: {result.FailedStepIndex + 1}. {step.DisplayName} / {step.CommandId}");
+            }
+
+            builder.AppendLine();
+            builder.Append("確認観点: 実装不具合だけでなく、テストケースの前提・期待値・必要シーンが正しいかも確認してください。");
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildFailureInstructionText(DebugScenarioTestCase test, DebugScenarioTestRunResult result)
+    {
+        if (test == null)
+        {
+            return string.Empty;
+        }
+
+        if (result == null)
+        {
+            return "未実行です。失敗時はここに修正依頼文が表示されます。";
+        }
+
+        if (result.Status == DebugScenarioTestStatus.Passed)
+        {
+            return "このテストは成功しました。";
+        }
+
+        if (result.Status != DebugScenarioTestStatus.Failed && result.Status != DebugScenarioTestStatus.Error)
+        {
+            return result.Message;
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.FailureInstruction))
+        {
+            return result.FailureInstruction;
+        }
+
+        return
+            "以下のデバッグシナリオテストが失敗しています。実装不具合とテストケース誤りの両方を確認してください。\n" +
+            $"TestId: {test.Id}\n" +
+            $"TestName: {test.DisplayName}\n" +
+            $"Category: {test.Category}\n" +
+            $"Message: {result.Message}";
+    }
+
     private static void CreateStepRow(RectTransform parent, Font font, Sprite sprite, int index, DebugScenarioTestStep step, DebugScenarioTestStepResult result)
     {
         var row = new GameObject("StepRow", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
@@ -559,9 +925,14 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         for (int i = 0; i < _testRows.Count; i++)
         {
             bool selected = i < _visibleTests.Count && _visibleTests[i] == _selectedTest;
+            bool rangeSelected = i < _visibleTests.Count &&
+                                 _visibleTests[i] != null &&
+                                 _rangeSelectedTestIds.Contains(_visibleTests[i].Id);
             _testRows[i].color = selected
                 ? new Color(0.08f, 0.32f, 0.22f, 0.98f)
-                : new Color(0.12f, 0.14f, 0.15f, 0.98f);
+                : rangeSelected
+                    ? new Color(0.13f, 0.24f, 0.34f, 0.98f)
+                    : new Color(0.12f, 0.14f, 0.15f, 0.98f);
         }
     }
 
@@ -599,6 +970,25 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
                 return new Color(0.62f, 0.66f, 0.70f);
             default:
                 return new Color(0.68f, 0.72f, 0.76f);
+        }
+    }
+
+    private static string FailureKindLabel(DebugScenarioTestFailureKind kind)
+    {
+        switch (kind)
+        {
+            case DebugScenarioTestFailureKind.Assertion:
+                return "期待値不一致";
+            case DebugScenarioTestFailureKind.Infrastructure:
+                return "テスト基盤/コマンド不足";
+            case DebugScenarioTestFailureKind.Precondition:
+                return "前提条件不足";
+            case DebugScenarioTestFailureKind.TestCaseDefinition:
+                return "テストケース定義の問題";
+            case DebugScenarioTestFailureKind.Exception:
+                return "例外";
+            default:
+                return "なし";
         }
     }
 
@@ -749,6 +1139,23 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         return bar.GetComponent<RectTransform>();
     }
 
+    private static RectTransform CreateResultFilterBar(RectTransform parent)
+    {
+        var bar = new GameObject("ResultFilterBar", typeof(RectTransform), typeof(GridLayoutGroup), typeof(LayoutElement));
+        bar.transform.SetParent(parent, false);
+        bar.GetComponent<LayoutElement>().preferredHeight = 66f;
+
+        GridLayoutGroup layout = bar.GetComponent<GridLayoutGroup>();
+        layout.cellSize = new Vector2(92f, 30f);
+        layout.spacing = new Vector2(6f, 6f);
+        layout.startCorner = GridLayoutGroup.Corner.UpperLeft;
+        layout.startAxis = GridLayoutGroup.Axis.Horizontal;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        layout.constraintCount = 7;
+        return bar.GetComponent<RectTransform>();
+    }
+
     private static void CreateSectionTitle(RectTransform parent, Font font, string text)
     {
         Text label = DebugUiFactory.CreateLabel(parent, font, 14, TextAnchor.MiddleLeft, new Color(0.58f, 0.78f, 0.68f));
@@ -821,6 +1228,16 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         }
 
         return text.Substring(0, maxLength - 3) + "...";
+    }
+
+    private static string ShortenCategoryLabel(string label)
+    {
+        if (string.IsNullOrWhiteSpace(label) || label.Length <= 8)
+        {
+            return label;
+        }
+
+        return label.Substring(0, 7) + "…";
     }
 }
 #endif

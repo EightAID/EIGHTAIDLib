@@ -19,6 +19,7 @@ public enum DebugScenarioTestStatus
     Failed,
     Error,
     Skipped,
+    Canceled,
 }
 
 public enum DebugScenarioTestFailureKind

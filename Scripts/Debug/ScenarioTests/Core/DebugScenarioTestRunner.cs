@@ -1,6 +1,7 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD || DAISHOU_DEBUG
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 
@@ -11,6 +12,11 @@ public sealed class DebugScenarioTestRunner
     /// ステップが失敗し stopOnFailure が true の場合、その時点でテストケース全体を失敗として終了します。
     /// </summary>
     public async UniTask<DebugScenarioTestRunResult> RunAsync(DebugScenarioTestCase testCase)
+    {
+        return await RunAsync(testCase, CancellationToken.None);
+    }
+
+    public async UniTask<DebugScenarioTestRunResult> RunAsync(DebugScenarioTestCase testCase, CancellationToken cancellationToken)
     {
         var runResult = new DebugScenarioTestRunResult
         {
@@ -27,13 +33,35 @@ public sealed class DebugScenarioTestRunner
         }
 
         float startedAt = Time.realtimeSinceStartup;
+        bool previousForceAutoAdvance = GameDialogueAdvanceInput.ForceAutoAdvanceForDebugTests;
+        GameDialogueAdvanceInput.ForceAutoAdvanceForDebugTests = true;
         try
         {
             for (int i = 0; i < testCase.Steps.Count; i++)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    runResult.Status = DebugScenarioTestStatus.Canceled;
+                    runResult.FailureKind = DebugScenarioTestFailureKind.None;
+                    runResult.FailedStepIndex = -1;
+                    runResult.Message = "テスト実行を停止しました。";
+                    runResult.DurationSeconds = Time.realtimeSinceStartup - startedAt;
+                    return runResult;
+                }
+
                 DebugScenarioTestStep step = testCase.Steps[i];
                 DebugScenarioTestStepResult stepResult = await RunStepAsync(step);
                 runResult.StepResults.Add(stepResult);
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    runResult.Status = DebugScenarioTestStatus.Canceled;
+                    runResult.FailureKind = DebugScenarioTestFailureKind.None;
+                    runResult.FailedStepIndex = i;
+                    runResult.Message = "テスト実行を停止しました。";
+                    runResult.DurationSeconds = Time.realtimeSinceStartup - startedAt;
+                    return runResult;
+                }
 
                 if ((stepResult.Status == DebugScenarioTestStatus.Failed ||
                      stepResult.Status == DebugScenarioTestStatus.Error) &&
@@ -60,6 +88,11 @@ public sealed class DebugScenarioTestRunner
             runResult.FailureKind = DebugScenarioTestFailureKind.Exception;
             runResult.Message = ex.Message;
             runResult.FailureInstruction = $"テスト実行中に例外が発生しました。TestId={runResult.TestId}, Error={ex.Message}";
+        }
+
+        finally
+        {
+            GameDialogueAdvanceInput.ForceAutoAdvanceForDebugTests = previousForceAutoAdvance;
         }
 
         runResult.DurationSeconds = Time.realtimeSinceStartup - startedAt;

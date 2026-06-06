@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -44,6 +45,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
     private Button _runSelectionButton;
     private Button _runCategoryButton;
     private Button _runAllButton;
+    private Button _stopButton;
     private Button _copyInstructionButton;
 
     private IReadOnlyList<DebugScenarioTestCase> _allTests = Array.Empty<DebugScenarioTestCase>();
@@ -53,6 +55,8 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
     private string _selectedCategory = string.Empty;
     private DebugScenarioTestStatus? _selectedResultStatus;
     private bool _isRunning;
+    private bool _stopRequested;
+    private CancellationTokenSource _runCts;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureExists()
@@ -139,7 +143,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         RectTransform right = CreateSection(main, "TestDetail", 850f, 1.1f);
 
         Text title = DebugUiFactory.CreateLabel(header, font, 24, TextAnchor.MiddleLeft, Color.white);
-        title.text = "Debug Test Panel  F2";
+        title.text = "テスト画面  F2";
         title.GetComponent<LayoutElement>().preferredWidth = 280f;
 
         _searchInput = DebugUiFactory.CreateInputField(header, font, sprite, "テスト名、カテゴリ、説明で検索");
@@ -150,6 +154,9 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         _runSelectionButton = DebugUiFactory.CreateButton(header, font, sprite, "選択範囲", RunSelection, 120f, 38f);
         _runCategoryButton = DebugUiFactory.CreateButton(header, font, sprite, "カテゴリ", RunCategory, 110f, 38f);
         _runAllButton = DebugUiFactory.CreateButton(header, font, sprite, "表示中全部", RunAll, 120f, 38f);
+        _stopButton = DebugUiFactory.CreateButton(header, font, sprite, "停止", StopRunningTests, 84f, 38f);
+        _stopButton.GetComponent<Image>().color = new Color(0.58f, 0.24f, 0.22f, 0.96f);
+        _stopButton.interactable = false;
         Button clearButton = DebugUiFactory.CreateButton(header, font, sprite, "結果クリア", ClearResults, 120f, 38f);
         clearButton.GetComponent<Image>().color = new Color(0.24f, 0.25f, 0.28f, 0.96f);
 
@@ -345,6 +352,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         CreateResultFilterButton("失敗", DebugScenarioTestStatus.Failed, font, sprite);
         CreateResultFilterButton("エラー", DebugScenarioTestStatus.Error, font, sprite);
         CreateResultFilterButton("実行中", DebugScenarioTestStatus.Running, font, sprite);
+        CreateResultFilterButton("停止", DebugScenarioTestStatus.Canceled, font, sprite);
     }
 
     private void CreateResultFilterButton(string label, DebugScenarioTestStatus? status, Font font, Sprite sprite)
@@ -601,9 +609,17 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         }
 
         _isRunning = true;
+        _stopRequested = false;
+        _runCts?.Dispose();
+        _runCts = new CancellationTokenSource();
         SetButtonsInteractable(false);
         foreach (DebugScenarioTestCase test in tests)
         {
+            if (_stopRequested || (_runCts != null && _runCts.IsCancellationRequested))
+            {
+                break;
+            }
+
             if (test == null)
             {
                 continue;
@@ -615,6 +631,11 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         }
 
         _isRunning = false;
+        _stopRequested = false;
+        _runCts?.Dispose();
+        _runCts = null;
+        Time.timeScale = 1f;
+        RuntimeDebugPanel.SetResumeTimeScale(1f);
         SetButtonsInteractable(true);
         RefreshTestList();
     }
@@ -636,6 +657,9 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         if (!keepRunningFlag)
         {
             _isRunning = true;
+            _stopRequested = false;
+            _runCts?.Dispose();
+            _runCts = new CancellationTokenSource();
             SetButtonsInteractable(false);
         }
 
@@ -649,18 +673,41 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         RefreshTestList();
         SelectTest(test);
 
-        DebugScenarioTestRunResult result = await _runner.RunAsync(test);
+        DebugScenarioTestRunResult result = await _runner.RunAsync(test, _runCts != null ? _runCts.Token : CancellationToken.None);
         _results[test.Id] = result;
         Debug.Log($"[DebugScenarioTest] {StatusMark(result.Status)} {test.DisplayName}: {result.Message}");
 
         if (!keepRunningFlag)
         {
             _isRunning = false;
+            _stopRequested = false;
+            _runCts?.Dispose();
+            _runCts = null;
+            Time.timeScale = 1f;
+            RuntimeDebugPanel.SetResumeTimeScale(1f);
             SetButtonsInteractable(true);
         }
 
         RefreshTestList();
         SelectTest(test);
+    }
+
+    private void StopRunningTests()
+    {
+        if (!_isRunning)
+        {
+            return;
+        }
+
+        _stopRequested = true;
+        _runCts?.Cancel();
+        Time.timeScale = 1f;
+        RuntimeDebugPanel.SetResumeTimeScale(1f);
+        if (_statusText != null)
+        {
+            _statusText.text = "停止要求を受け付けました。現在のステップ完了後に停止します。";
+        }
+        SetButtonsInteractable(false);
     }
 
     private void ClearResults()
@@ -712,6 +759,11 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             _runAllButton.interactable = interactable;
         }
 
+        if (_stopButton != null)
+        {
+            _stopButton.interactable = _isRunning && !_stopRequested;
+        }
+
         if (_copyInstructionButton != null)
         {
             DebugScenarioTestRunResult result = GetResult(_selectedTest);
@@ -761,8 +813,9 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         int failed = CountStatus(DebugScenarioTestStatus.Failed);
         int error = CountStatus(DebugScenarioTestStatus.Error);
         int running = CountStatus(DebugScenarioTestStatus.Running);
+        int canceled = CountStatus(DebugScenarioTestStatus.Canceled);
         int notRun = total - _results.Values.Count(result => result.Status != DebugScenarioTestStatus.NotRun);
-        _resultSummaryText.text = $"結果: 成功 {passed} / 失敗 {failed} / エラー {error} / 実行中 {running} / 未実行 {Math.Max(0, notRun)}";
+        _resultSummaryText.text = $"結果: 成功 {passed} / 失敗 {failed} / エラー {error} / 停止 {canceled} / 実行中 {running} / 未実行 {Math.Max(0, notRun)}";
     }
 
     private int CountStatus(DebugScenarioTestStatus status)
@@ -950,6 +1003,8 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
                 return "!";
             case DebugScenarioTestStatus.Skipped:
                 return "SKIP";
+            case DebugScenarioTestStatus.Canceled:
+                return "STOP";
             default:
                 return "-";
         }
@@ -968,6 +1023,8 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
                 return new Color(1f, 0.36f, 0.34f);
             case DebugScenarioTestStatus.Skipped:
                 return new Color(0.62f, 0.66f, 0.70f);
+            case DebugScenarioTestStatus.Canceled:
+                return new Color(1f, 0.72f, 0.36f);
             default:
                 return new Color(0.68f, 0.72f, 0.76f);
         }

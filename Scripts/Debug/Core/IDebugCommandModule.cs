@@ -1,4 +1,4 @@
-#if UNITY_EDITOR || DAISHOU_TEST_BUILD
+#if UNITY_EDITOR || EIGHTAID_TEST_BUILD
 /// <summary>
 /// デバッグコマンドのまとまりを表す登録単位です。
 /// プロジェクト側は機能カテゴリごとにこのインターフェイスを実装し、

@@ -1,4 +1,4 @@
-#if UNITY_EDITOR || DAISHOU_TEST_BUILD
+#if UNITY_EDITOR || EIGHTAID_TEST_BUILD
 using UnityEngine;
 
 public static class DebugAvailability
@@ -9,7 +9,7 @@ public static class DebugAvailability
         {
 #if UNITY_EDITOR
             return true;
-#elif DAISHOU_TEST_BUILD
+#elif EIGHTAID_TEST_BUILD
             BuildConfig config = BuildConfig.Instance;
             return config != null &&
                    config.enableDebugShortcuts &&

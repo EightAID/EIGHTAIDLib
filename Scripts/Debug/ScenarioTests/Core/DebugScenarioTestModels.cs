@@ -1,4 +1,4 @@
-#if UNITY_EDITOR || DAISHOU_TEST_BUILD
+#if UNITY_EDITOR || EIGHTAID_TEST_BUILD
 using System;
 using System.Collections.Generic;
 using UnityEngine;

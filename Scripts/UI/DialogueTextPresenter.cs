@@ -47,7 +47,7 @@ namespace EightAID.EIGHTAIDLib.UI
 
             _processedText = (preprocessor ?? new DefaultDialogueTextPreprocessor()).Process(text);
             // TMPのメッシュ更新タイミングに依存しないように、受け取った文字列から先に可視文字数を確定します。
-            _preparedCharacterCount = CountVisibleCharacters(_processedText);
+            _preparedCharacterCount = CountVisibleCharacters(GetTextForCharacterCount(_processedText));
             SetDisplayText(_processedText);
             _displayText.maxVisibleCharacters = 0;
             SetState(DialogueState.Typing);
@@ -94,6 +94,16 @@ namespace EightAID.EIGHTAIDLib.UI
             }
 
             SetState(DialogueState.Idle);
+        }
+
+        private string GetTextForCharacterCount(string text)
+        {
+            if (_displayText != null && _displayText.TryGetComponent(out TextMeshProRuby _))
+            {
+                return TMProRubyUtil.GetExpandText(text);
+            }
+
+            return text;
         }
 
         private void SetDisplayText(string text)

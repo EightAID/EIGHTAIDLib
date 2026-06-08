@@ -1,4 +1,4 @@
-#if UNITY_EDITOR || DEVELOPMENT_BUILD || DAISHOU_DEBUG
+#if UNITY_EDITOR || DAISHOU_TEST_BUILD
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -56,6 +56,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
     private DebugScenarioTestStatus? _selectedResultStatus;
     private bool _isRunning;
     private bool _stopRequested;
+    private bool _inputBlockedBeforeVisible;
     private CancellationTokenSource _runCts;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -121,6 +122,10 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         else if (_panelRoot != null && _panelRoot.gameObject.activeSelf && Input.GetKeyDown(KeyCode.Escape))
         {
             SetVisible(false);
+        }
+        else if (_panelRoot != null && _panelRoot.gameObject.activeSelf)
+        {
+            InputSystemBase.SetInputBlockedForDebugUi(true);
         }
     }
 
@@ -209,10 +214,18 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             return;
         }
 
+        bool wasVisible = _panelRoot.gameObject.activeSelf;
+        if (visible && !wasVisible)
+        {
+            RuntimeDebugPanel.HideNow();
+            _inputBlockedBeforeVisible = InputSystemBase.IsInputBlockedForDebugUi;
+            InputSystemBase.SetDebugUiInputCaptured(true);
+            InputSystemBase.SetInputBlockedForDebugUi(true);
+        }
+
         _panelRoot.gameObject.SetActive(visible);
         if (visible)
         {
-            RuntimeDebugPanel.HideNow();
             LoadTests();
             RefreshTestList();
             _searchInput?.ActivateInputField();
@@ -220,6 +233,26 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             {
                 EventSystem.current.SetSelectedGameObject(_searchInput.gameObject);
             }
+        }
+        else if (wasVisible)
+        {
+            InputSystemBase.SetDebugUiInputCaptured(false);
+            InputSystemBase.SetInputBlockedForDebugUi(_inputBlockedBeforeVisible);
+            ClearSelectedDebugUi();
+        }
+    }
+
+    private void ClearSelectedDebugUi()
+    {
+        if (EventSystem.current == null || EventSystem.current.currentSelectedGameObject == null)
+        {
+            return;
+        }
+
+        Transform selected = EventSystem.current.currentSelectedGameObject.transform;
+        if (_panelRoot != null && selected.IsChildOf(_panelRoot))
+        {
+            EventSystem.current.SetSelectedGameObject(null);
         }
     }
 

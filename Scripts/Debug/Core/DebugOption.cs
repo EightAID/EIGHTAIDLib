@@ -1,4 +1,4 @@
-#if UNITY_EDITOR || DEVELOPMENT_BUILD || DAISHOU_DEBUG
+#if UNITY_EDITOR || DAISHOU_TEST_BUILD
 public sealed class DebugOption
 {
     public DebugOption(string id, string label, string description = "")

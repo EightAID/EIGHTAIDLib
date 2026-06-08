@@ -1,4 +1,4 @@
-#if UNITY_EDITOR || DEVELOPMENT_BUILD || DAISHOU_DEBUG
+#if UNITY_EDITOR || DAISHOU_TEST_BUILD
 /// <summary>
 /// プロジェクト固有のシナリオテストを登録するためのモジュールです。
 /// EIGHTAIDLib 側はゲーム固有クラスを知らないため、各プロジェクトはこの口を通して

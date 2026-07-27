@@ -11,12 +11,10 @@ namespace EightAID.EIGHTAIDLib.Localization
     public static class EALocalizationService
     {
         private const string DefaultUiCsvResourcePath = "Localize/TextDatas/UITextLocalization";
-        private const string DefaultLanguagePrefKey = "localization.language";
 
         private static readonly Dictionary<string, string> UiSourceToEnglish = new Dictionary<string, string>();
 
         private static string _uiCsvResourcePath = DefaultUiCsvResourcePath;
-        private static string _languagePrefKey = DefaultLanguagePrefKey;
         private static int _uiSourceColumnIndex;
         private static int _uiEnglishColumnIndex = 1;
         private static bool _loaded;
@@ -36,13 +34,11 @@ namespace EightAID.EIGHTAIDLib.Localization
         public static void ConfigureUiTable(
             string uiCsvResourcePath,
             int sourceColumnIndex = 0,
-            int englishColumnIndex = 1,
-            string languagePrefKey = DefaultLanguagePrefKey)
+            int englishColumnIndex = 1)
         {
             _uiCsvResourcePath = string.IsNullOrEmpty(uiCsvResourcePath) ? DefaultUiCsvResourcePath : uiCsvResourcePath;
             _uiSourceColumnIndex = Mathf.Max(0, sourceColumnIndex);
             _uiEnglishColumnIndex = Mathf.Max(0, englishColumnIndex);
-            _languagePrefKey = string.IsNullOrEmpty(languagePrefKey) ? DefaultLanguagePrefKey : languagePrefKey;
             Reload();
         }
 
@@ -61,8 +57,6 @@ namespace EightAID.EIGHTAIDLib.Localization
             }
 
             _currentLanguage = language;
-            PlayerPrefs.SetInt(_languagePrefKey, (int)_currentLanguage);
-            PlayerPrefs.Save();
             LanguageChanged?.Invoke(_currentLanguage);
         }
 
@@ -93,7 +87,7 @@ namespace EightAID.EIGHTAIDLib.Localization
             }
 
             _loaded = true;
-            _currentLanguage = (EALocalizationLanguage)PlayerPrefs.GetInt(_languagePrefKey, (int)EALocalizationLanguage.Japanese);
+            _currentLanguage = EALocalizationLanguage.Japanese;
             LoadUiTable();
         }
 

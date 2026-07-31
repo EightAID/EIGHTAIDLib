@@ -1,0 +1,10 @@
+{
+  "name": "com.eightaid.story-graph",
+  "version": "1.0.0",
+  "displayName": "EIGHTAIDLib StoryGraph",
+  "description": "プロジェクト固有の処理と表示を分離して再利用できる、型付きStoryGraph RuntimeおよびGraph Editorです。",
+  "unity": "6000.3",
+  "author": {
+    "name": "EightAID"
+  }
+}

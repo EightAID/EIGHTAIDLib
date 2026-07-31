@@ -15,7 +15,7 @@ namespace EightAID.StoryGraph.Editor
         private ObjectField _assetField;
         private StoryGraphAsset _asset;
 
-        [MenuItem("Tools/EIGHTAIDLib/StoryGraph/グラフエディタ")]
+        [MenuItem("Tools/EIGHTAID/Story/グラフエディタ")]
         private static void Open()
         {
             GetWindow<StoryGraphEditorWindow>("StoryGraph");

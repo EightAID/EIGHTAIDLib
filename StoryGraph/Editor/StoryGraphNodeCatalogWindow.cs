@@ -7,7 +7,7 @@ namespace EightAID.StoryGraph.Editor
     /// <summary>登録済みの共通・固有ノードを確認するための StoryGraph Editor カタログです。</summary>
     public sealed class StoryGraphNodeCatalogWindow : EditorWindow
     {
-        [MenuItem("Tools/EIGHTAIDLib/StoryGraph/ノードカタログ")]
+        [MenuItem("Tools/EIGHTAID/Story/ノードカタログ")]
         private static void Open()
         {
             GetWindow<StoryGraphNodeCatalogWindow>("StoryGraph ノード");

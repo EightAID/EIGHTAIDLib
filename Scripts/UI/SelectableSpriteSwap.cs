@@ -12,7 +12,7 @@ namespace EightAID.EIGHTAIDLib.UI
         [SerializeField] private Image targetImage;
         [SerializeField] private Sprite normalSprite;
         [SerializeField] private Sprite selectedSprite;
-        [SerializeField] private bool setNativeSizeOnSwap = true;
+        [SerializeField] private Image selectionOverlayImage;
         [SerializeField] private bool includePointerHover = true;
         [Header("Selection Arrow")]
         [SerializeField] private Image selectionArrowImage;
@@ -41,6 +41,17 @@ namespace EightAID.EIGHTAIDLib.UI
             if (targetImage == null)
             {
                 targetImage = GetComponent<Image>();
+            }
+
+            if (targetImage != null && normalSprite != null)
+            {
+                targetImage.sprite = normalSprite;
+            }
+
+            if (selectionOverlayImage != null)
+            {
+                selectionOverlayImage.raycastTarget = false;
+                selectionOverlayImage.gameObject.SetActive(false);
             }
 
             if (selectionArrowImage != null)
@@ -111,7 +122,7 @@ namespace EightAID.EIGHTAIDLib.UI
 
         private void Refresh(bool force = false)
         {
-            if (targetImage == null)
+            if (targetImage == null || selectionOverlayImage == null)
             {
                 return;
             }
@@ -128,61 +139,7 @@ namespace EightAID.EIGHTAIDLib.UI
 
             _lastHighlighted = highlighted;
             UpdateSelectionArrow(highlighted);
-            if (highlighted && selectedSprite != null)
-            {
-                targetImage.sprite = selectedSprite;
-                if (setNativeSizeOnSwap)
-                {
-                    ApplyNativeSizePreservingChildren();
-                }
-
-                return;
-            }
-
-            if (normalSprite != null)
-            {
-                targetImage.sprite = normalSprite;
-                if (setNativeSizeOnSwap)
-                {
-                    ApplyNativeSizePreservingChildren();
-                }
-            }
-        }
-
-        private void ApplyNativeSizePreservingChildren()
-        {
-            var root = targetImage.rectTransform;
-            if (root == null)
-            {
-                targetImage.SetNativeSize();
-                return;
-            }
-
-            var descendants = root.GetComponentsInChildren<RectTransform>(true);
-            var cached = new List<(RectTransform rect, Vector3 localPos)>(descendants.Length);
-            for (int i = 0; i < descendants.Length; i++)
-            {
-                var rect = descendants[i];
-                if (rect == null || rect == root)
-                {
-                    continue;
-                }
-
-                cached.Add((rect, rect.localPosition));
-            }
-
-            targetImage.SetNativeSize();
-
-            for (int i = 0; i < cached.Count; i++)
-            {
-                var entry = cached[i];
-                if (entry.rect == null)
-                {
-                    continue;
-                }
-
-                entry.rect.localPosition = entry.localPos;
-            }
+            selectionOverlayImage.gameObject.SetActive(highlighted && selectedSprite != null);
         }
 
         private void UpdateSelectionArrow(bool highlighted)

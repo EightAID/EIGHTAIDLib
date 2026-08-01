@@ -109,6 +109,16 @@ namespace EightAID.StoryGraph.Editor
 
         private void SetAsset(StoryGraphAsset asset)
         {
+            if (asset != null && StoryGraphAssetEditorRegistry.TryOpen(asset))
+            {
+                _assetField.SetValueWithoutNotify(null);
+                _asset = null;
+                _graphView.Load(null);
+                _inspector.Clear();
+                Close();
+                return;
+            }
+
             _asset = asset;
             _graphView.Load(asset);
             _graphView.SetCompact(_compactMode);

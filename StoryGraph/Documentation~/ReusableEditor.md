@@ -28,3 +28,7 @@ EIGHTAIDLib StoryGraph Editor
 ```
 
 作品固有プレビューが必要な場合も、共通packageへゲームの型を追加せず、presentation provider側で組み立ててください。
+
+## 派生assetを専用ウィンドウで開く
+
+作品側に既存のリッチエディタがある場合は`IStoryGraphAssetEditor`を実装します。共通ウィンドウで対象assetが選ばれても、`CanOpen`が一致した専用ウィンドウへ自動転送されます。

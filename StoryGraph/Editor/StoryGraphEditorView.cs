@@ -12,6 +12,7 @@ namespace EightAID.StoryGraph.Editor
     {
         private readonly Action<StoryGraphNodeView> _onNodeSelected;
         private readonly Dictionary<string, StoryNodeDefinition> _definitions;
+        private readonly Dictionary<string, StoryNodeEditorPresentation> _presentations;
         private StoryGraphAsset _asset;
         private bool _isLoading;
 
@@ -20,6 +21,8 @@ namespace EightAID.StoryGraph.Editor
             _onNodeSelected = onNodeSelected;
             _definitions = StoryNodeEditorRegistry.GetDefinitions()
                 .ToDictionary(definition => definition.NodeTypeId);
+            _presentations = StoryNodeEditorRegistry.GetPresentations()
+                .ToDictionary(presentation => presentation.NodeTypeId);
 
             style.flexGrow = 1f;
             Insert(0, new GridBackground());
@@ -118,6 +121,82 @@ namespace EightAID.StoryGraph.Editor
                 port.direction != startPort.direction).ToList();
         }
 
+        public List<StoryGraphNodeView> FindNodes(string query, string scope)
+        {
+            ClearSearchHighlights();
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return new List<StoryGraphNodeView>();
+            }
+
+            List<StoryGraphNodeView> results = nodes
+                .OfType<StoryGraphNodeView>()
+                .Where(node => node.MatchesSearch(query, scope))
+                .ToList();
+            foreach (StoryGraphNodeView node in results)
+            {
+                node.SetSearchHighlighted(true, false);
+            }
+            return results;
+        }
+
+        public void SelectSearchResult(IReadOnlyList<StoryGraphNodeView> results, int index)
+        {
+            ClearSelection();
+            for (int i = 0; i < results.Count; i++)
+            {
+                StoryGraphNodeView node = results[i];
+                node.SetSearchHighlighted(true, i == index);
+            }
+
+            if (index < 0 || index >= results.Count)
+            {
+                return;
+            }
+
+            StoryGraphNodeView current = results[index];
+            AddToSelection(current);
+            FrameSelection();
+        }
+
+        public void ClearSearchHighlights()
+        {
+            foreach (StoryGraphNodeView node in nodes.OfType<StoryGraphNodeView>())
+            {
+                node.SetSearchHighlighted(false, false);
+            }
+        }
+
+        public void SetCompact(bool compact)
+        {
+            foreach (StoryGraphNodeView node in nodes.OfType<StoryGraphNodeView>())
+            {
+                node.SetCompact(compact);
+            }
+        }
+
+        public void ZoomBy(float factor)
+        {
+            float next = Mathf.Clamp(scale * factor, 0.1f, 2.5f);
+            Vector3 translate = contentViewContainer.transform.position;
+            UpdateViewTransform(translate, new Vector3(next, next, 1f));
+        }
+
+        public void FrameRoot()
+        {
+            StoryGraphNodeView root = nodes
+                .OfType<StoryGraphNodeView>()
+                .FirstOrDefault(node => node.Record.NodeTypeId == StoryNodeTypeIds.Root);
+            if (root == null)
+            {
+                return;
+            }
+
+            ClearSelection();
+            AddToSelection(root);
+            FrameSelection();
+        }
+
         private void AddNode(StoryNodeDefinition definition, Vector2 position)
         {
             Undo.RecordObject(_asset, "StoryGraph ノード追加");
@@ -133,7 +212,8 @@ namespace EightAID.StoryGraph.Editor
 
         private StoryGraphNodeView CreateView(StoryNodeRecord record, StoryNodeDefinition definition)
         {
-            var view = new StoryGraphNodeView(record, definition, _onNodeSelected);
+            _presentations.TryGetValue(record.NodeTypeId, out StoryNodeEditorPresentation presentation);
+            var view = new StoryGraphNodeView(record, definition, presentation, _onNodeSelected);
             AddElement(view);
             return view;
         }

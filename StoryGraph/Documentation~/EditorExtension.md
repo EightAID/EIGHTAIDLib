@@ -1,8 +1,13 @@
-# Editor拡張
+# エディタ拡張
 
-## Providerを作る
+共通エディタは、グラフ操作の利便性とプロジェクト固有UIを分離しています。
 
-Editor用assemblyへ`IStoryNodeEditorProvider`実装を置きます。
+- 共通側: 日本語ツールバー、検索、コンパクト表示、ズーム、保存、接続編集
+- プロジェクト側: ノード定義、要約、検索対象、型別Inspector
+
+## ノードを登録する
+
+Editor assemblyで`IStoryNodeEditorProvider`を実装します。Providerは`TypeCache`で自動検出されます。
 
 ```csharp
 public sealed class SampleNodeEditorProvider : IStoryNodeEditorProvider
@@ -16,41 +21,46 @@ public sealed class SampleNodeEditorProvider : IStoryNodeEditorProvider
             "画像表示",
             "演出",
             "指定した画像を表示します。",
-            () => new ShowImagePayload(),
-            new[]
-            {
-                new StoryNodePortDefinition("次へ", StoryEdgeRole.Next)
-            },
-            new Color(0.3f, 0.4f, 0.6f));
+            () => new ShowImagePayload());
     }
 }
 ```
 
-手動登録は不要です。Unityのdomain reload後に自動検出されます。
+`nodeTypeId`は保存済みassetから参照されるため、公開後は変更しないでください。
 
-## node type ID
+## 型別の見せ方を登録する
 
-`プロジェクト識別子.機能名`の形式を推奨します。
+`IStoryNodeEditorPresentationProvider`を実装すると、巨大なpayloadをそのまま表示せず、ノード種別ごとに必要な項目だけ表示できます。
 
-- `core.message`
-- `sample.show-image`
-- `mygame.set-flag`
+```csharp
+public sealed class SamplePresentationProvider : IStoryNodeEditorPresentationProvider
+{
+    public int Priority => 100;
 
-保存済みassetが参照するため、公開後は変更しないでください。
+    public IEnumerable<StoryNodeEditorPresentation> GetPresentations()
+    {
+        yield return new StoryNodeEditorPresentation(
+            "sample.show-image",
+            payload => ((ShowImagePayload)payload).image?.name,
+            payload => new[] { ((ShowImagePayload)payload).caption },
+            context =>
+            {
+                context.AddProperty("image", "画像");
+                context.AddProperty("caption", "説明");
+                context.AddProperty("duration", "表示時間");
+            });
+    }
+}
+```
 
-## 組み込み定義の差し替え
+引数の役割は次のとおりです。
 
-利用プロジェクト固有のMessage payloadを使う場合などは、同じnode type IDを返し、Providerの`Priority`を組み込み値より高くします。
-最もPriorityが高い定義がEditorで使用されます。
+- `summaryFactory`: ノード上の短い要約を作る
+- `searchTextFactory`: 「本文・設定」検索へ渡す文字列を作る
+- `inspectorFactory`: 右側Inspectorへ表示する項目と順序を決める
 
-## port
+表示定義がないノードだけ、互換用の汎用payload Inspectorへフォールバックします。
 
-通常遷移は`Next`、条件分岐は`True`と`False`、該当edgeがない場合の遷移は`Default`を使用します。
-処理結果で分岐するノードには`Success`と`Failure`を利用できます。
+## 上書き規則
 
-## payload Inspector
-
-ノードを選択するとpayloadが`SerializedProperty`として表示されます。
-独自PropertyDrawerも通常どおり利用できます。
-
-payload型を変更した場合は既存assetを自動変換せず、バックアップ、変換、構造監査、Unity Object参照照合を行う専用移行ツールを用意してください。
+同じ`nodeTypeId`を複数Providerが返した場合は、`Priority`が高いProviderの定義を使います。共通ノードを作品向けpayloadへ差し替える場合にも利用できます。

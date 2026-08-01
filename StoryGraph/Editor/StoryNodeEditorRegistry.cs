@@ -66,5 +66,34 @@ namespace EightAID.StoryGraph.Editor
                 .ThenBy(definition => definition.DisplayName)
                 .ToArray();
         }
+
+        public static IReadOnlyList<StoryNodeEditorPresentation> GetPresentations()
+        {
+            var providers = new List<IStoryNodeEditorPresentationProvider>
+            {
+                new BuiltInStoryNodeEditorPresentationProvider()
+            };
+
+            foreach (Type type in TypeCache.GetTypesDerivedFrom<IStoryNodeEditorPresentationProvider>())
+            {
+                if (type.IsAbstract || type.IsInterface || type == typeof(BuiltInStoryNodeEditorPresentationProvider))
+                {
+                    continue;
+                }
+
+                if (Activator.CreateInstance(type) is IStoryNodeEditorPresentationProvider provider)
+                {
+                    providers.Add(provider);
+                }
+            }
+
+            return providers
+                .OrderBy(provider => provider.Priority)
+                .SelectMany(provider => provider.GetPresentations() ?? Array.Empty<StoryNodeEditorPresentation>())
+                .Where(presentation => presentation != null && !string.IsNullOrWhiteSpace(presentation.NodeTypeId))
+                .GroupBy(presentation => presentation.NodeTypeId)
+                .Select(group => group.Last())
+                .ToArray();
+        }
     }
 }

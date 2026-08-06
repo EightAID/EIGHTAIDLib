@@ -60,9 +60,8 @@ public sealed class CurvedTextGraphic : MaskableGraphic
         base.OnDestroy();
     }
 
-    protected override void OnValidate()
+    protected void OnValidate()
     {
-        base.OnValidate();
         horizontalSegments = Mathf.Clamp(horizontalSegments, 8, 128);
         verticalSegments = Mathf.Clamp(verticalSegments, 1, 16);
         textureWidth = Mathf.Clamp(textureWidth, 256, 2048);
@@ -266,4 +265,3 @@ public sealed class CurvedTextGraphic : MaskableGraphic
         }
     }
 }
-

@@ -12,6 +12,15 @@ public sealed class DebugArgumentDefinition
     public object MaxValue { get; }
     public bool IsOptional { get; }
     public string OptionProviderId { get; }
+    public string VisibleWhenKey { get; private set; }
+    public string VisibleWhenValue { get; private set; }
+
+    public DebugArgumentDefinition VisibleWhen(string key, string value)
+    {
+        VisibleWhenKey = key;
+        VisibleWhenValue = value;
+        return this;
+    }
 
     private DebugArgumentDefinition(
         string key,

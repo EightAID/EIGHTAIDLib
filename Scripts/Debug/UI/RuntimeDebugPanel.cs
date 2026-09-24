@@ -48,6 +48,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private IReadOnlyList<DebugCommand> _visibleCommands = Array.Empty<DebugCommand>();
 
     private readonly Dictionary<string, Func<object>> _valueReaders = new Dictionary<string, Func<object>>(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<GameObject>> _argumentRows = new Dictionary<string, List<GameObject>>(StringComparer.Ordinal);
     private readonly List<Image> _commandRows = new List<Image>();
     private readonly List<string> _logLines = new List<string>();
 
@@ -611,6 +612,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     {
         _selectedCommand = command;
         _valueReaders.Clear();
+        _argumentRows.Clear();
         HideChoicePopup();
 
         foreach (Transform child in _argumentContent)
@@ -637,7 +639,28 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
         foreach (DebugArgumentDefinition argument in command.Arguments)
         {
+            int firstChild = _argumentContent.childCount;
             CreateArgumentField(argument, font, sprite);
+            var rows = new List<GameObject>();
+            for (int i = firstChild; i < _argumentContent.childCount; i++)
+            {
+                rows.Add(_argumentContent.GetChild(i).gameObject);
+            }
+            _argumentRows[argument.Key] = rows;
+        }
+        RefreshArgumentVisibility();
+    }
+
+    private void RefreshArgumentVisibility()
+    {
+        if (_selectedCommand == null) return;
+        foreach (DebugArgumentDefinition argument in _selectedCommand.Arguments)
+        {
+            bool visible = string.IsNullOrEmpty(argument.VisibleWhenKey) ||
+                (_valueReaders.TryGetValue(argument.VisibleWhenKey, out Func<object> reader) &&
+                 string.Equals(reader()?.ToString(), argument.VisibleWhenValue, StringComparison.Ordinal));
+            if (!_argumentRows.TryGetValue(argument.Key, out List<GameObject> rows)) continue;
+            foreach (GameObject row in rows) row.SetActive(visible);
         }
     }
 
@@ -703,7 +726,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
                 Array values = Enum.GetValues(argument.ValueType);
                 List<string> options = values.Cast<object>().Select(value => value.ToString()).ToList();
                 int defaultIndex = Mathf.Max(0, options.IndexOf(argument.DefaultValue.ToString()));
-                CreateChoiceField(argument.Label, options, defaultIndex, font, sprite, out Func<int> enumIndexReader);
+                CreateChoiceField(argument.Label, options, defaultIndex, font, sprite, out Func<int> enumIndexReader, RefreshArgumentVisibility);
                 _valueReaders[argument.Key] = () => values.GetValue(enumIndexReader.Invoke());
                 break;
             case DebugArgumentKind.Option:
@@ -728,7 +751,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
                     }
                 }
 
-                CreateChoiceField(argument.Label, optionLabels, optionDefaultIndex, font, sprite, out Func<int> optionIndexReader);
+                CreateChoiceField(argument.Label, optionLabels, optionDefaultIndex, font, sprite, out Func<int> optionIndexReader, RefreshArgumentVisibility);
                 _valueReaders[argument.Key] = () =>
                 {
                     int index = optionIndexReader.Invoke();
@@ -740,7 +763,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         }
     }
 
-    private void CreateChoiceField(string label, IReadOnlyList<string> options, int defaultIndex, Font font, Sprite sprite, out Func<int> indexReader)
+    private void CreateChoiceField(string label, IReadOnlyList<string> options, int defaultIndex, Font font, Sprite sprite, out Func<int> indexReader, Action onChanged = null)
     {
         int selectedIndex = Mathf.Clamp(defaultIndex, 0, Mathf.Max(0, options.Count - 1));
         Button button = DebugUiFactory.CreateChoiceRow(_argumentContent, font, sprite, label, out Text valueText);
@@ -759,6 +782,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             {
                 selectedIndex = nextIndex;
                 UpdateLabel();
+                onChanged?.Invoke();
             });
         });
 

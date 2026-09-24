@@ -162,6 +162,15 @@ public sealed class DebugCommand
             return this;
         }
 
+        public Builder ShowLastArgWhen(string key, string value)
+        {
+            if (_arguments.Count > 0)
+            {
+                _arguments[_arguments.Count - 1].VisibleWhen(key, value);
+            }
+            return this;
+        }
+
         public Builder Run(Func<DebugCommandContext, DebugCommandResult> execute)
         {
             _executeAsync = context => UniTask.FromResult(execute(context));

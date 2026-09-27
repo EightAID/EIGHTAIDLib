@@ -67,7 +67,10 @@ namespace EightAID.EIGHTAIDLib.Effect
                     if (!profile.TryGet(out DepthOfField depthOfField))
                         return false;
 
-                    rawValue = depthOfField.gaussianMaxRadius.value;
+                    // A disabled override still stores a nonzero radius. Capturing that
+                    // radius would enable blur when a temporary effect is restored.
+                    rawValue = depthOfField.active && depthOfField.mode.value == DepthOfFieldMode.Gaussian
+                        ? depthOfField.gaussianMaxRadius.value : 0f;
                     return true;
             }
 
@@ -166,7 +169,9 @@ namespace EightAID.EIGHTAIDLib.Effect
 
                     depthOfField.active = true;
                     depthOfField.mode.overrideState = true;
-                    depthOfField.mode.value = DepthOfFieldMode.Gaussian;
+                    // URP clamps gaussianMaxRadius to at least 0.5, so zero radius
+                    // alone cannot disable the effect.
+                    depthOfField.mode.value = value > 0f ? DepthOfFieldMode.Gaussian : DepthOfFieldMode.Off;
                     depthOfField.gaussianStart.overrideState = true;
                     depthOfField.gaussianStart.value = 0f;
                     depthOfField.gaussianEnd.overrideState = true;

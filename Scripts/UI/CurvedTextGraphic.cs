@@ -60,8 +60,10 @@ public sealed class CurvedTextGraphic : MaskableGraphic
         base.OnDestroy();
     }
 
-    protected void OnValidate()
+#if UNITY_EDITOR
+    protected override void OnValidate()
     {
+        base.OnValidate();
         horizontalSegments = Mathf.Clamp(horizontalSegments, 8, 128);
         verticalSegments = Mathf.Clamp(verticalSegments, 1, 16);
         textureWidth = Mathf.Clamp(textureWidth, 256, 2048);
@@ -71,6 +73,7 @@ public sealed class CurvedTextGraphic : MaskableGraphic
         verticalPadding = Mathf.Max(0f, verticalPadding);
         MarkDirty();
     }
+#endif
 
     private void LateUpdate()
     {
@@ -122,7 +125,7 @@ public sealed class CurvedTextGraphic : MaskableGraphic
             textObject.transform.SetParent(canvasObject.transform, false);
             renderText = textObject.GetComponent<TextMeshProUGUI>();
             renderText.alignment = TextAlignmentOptions.Center;
-            renderText.enableWordWrapping = false;
+            renderText.textWrappingMode = TextWrappingModes.NoWrap;
             renderText.overflowMode = TextOverflowModes.Overflow;
             renderText.rectTransform.anchorMin = Vector2.zero;
             renderText.rectTransform.anchorMax = Vector2.one;

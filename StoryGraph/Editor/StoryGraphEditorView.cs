@@ -178,7 +178,8 @@ namespace EightAID.StoryGraph.Editor
         public void ZoomBy(float factor)
         {
             float next = Mathf.Clamp(scale * factor, 0.1f, 2.5f);
-            Vector3 translate = contentViewContainer.transform.position;
+            var resolvedTranslate = contentViewContainer.resolvedStyle.translate;
+            Vector3 translate = new Vector3(resolvedTranslate.x, resolvedTranslate.y, resolvedTranslate.z);
             UpdateViewTransform(translate, new Vector3(next, next, 1f));
         }
 

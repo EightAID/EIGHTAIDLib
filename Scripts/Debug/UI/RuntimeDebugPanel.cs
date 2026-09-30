@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using EightAID.EIGHTAIDLib.Input;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 #if UNITY_EDITOR
@@ -19,7 +21,7 @@ using UnityEditor;
 /// </summary>
 public sealed class RuntimeDebugPanel : MonoBehaviour
 {
-    private const KeyCode ToggleKey = KeyCode.F1;
+    private const Key ToggleKey = Key.F1;
     private const string PrimaryFontAssetPath = "Assets/Fonts/Morisawa/BO-A1GothicStdN-Regular.otf";
     private const string SecondaryFontAssetPath = "Assets/Fonts/Morisawa/BO-A1GothicStdN-Medium.otf";
     private const int MaxLogLines = 18;
@@ -115,7 +117,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(ToggleKey))
+        if (DeviceInput.WasKeyPressed(ToggleKey))
         {
             if (_panelRoot == null)
             {
@@ -133,7 +135,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
         InputSystemBase.SetInputBlockedForDebugUi(true);
 
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (DeviceInput.WasKeyPressed(Key.Escape))
         {
             if (_choicePopupRoot != null && _choicePopupRoot.gameObject.activeSelf)
             {
@@ -150,15 +152,15 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        if (DeviceInput.WasKeyPressed(Key.UpArrow))
         {
             MoveSelection(-1);
         }
-        else if (Input.GetKeyDown(KeyCode.DownArrow))
+        else if (DeviceInput.WasKeyPressed(Key.DownArrow))
         {
             MoveSelection(1);
         }
-        else if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        else if (DeviceInput.WasKeyPressed(Key.Enter) || DeviceInput.WasKeyPressed(Key.NumpadEnter))
         {
             ExecuteSelectedCommand();
         }
@@ -268,7 +270,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             return;
         }
 
-        var eventSystemObject = new GameObject("RuntimeDebugEventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        var eventSystemObject = new GameObject("RuntimeDebugEventSystem", typeof(EventSystem), typeof(UnityEngine.InputSystem.UI.InputSystemUIInputModule));
+        InputSystemTextInput.Attach(eventSystemObject.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>());
         DontDestroyOnLoad(eventSystemObject);
     }
 
@@ -1061,7 +1064,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private static IEnumerator RefreshChoiceResultsNextFrame(Action refresh)
     {
         yield return null;
-        while (!string.IsNullOrEmpty(Input.compositionString))
+        while (!string.IsNullOrEmpty(EventSystem.current?.currentInputModule?.input.compositionString))
         {
             yield return null;
         }

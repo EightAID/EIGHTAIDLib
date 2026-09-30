@@ -6,6 +6,8 @@ using System.Text;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using EightAID.EIGHTAIDLib.Input;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 #if UNITY_EDITOR
@@ -18,7 +20,7 @@ using UnityEditor;
 /// </summary>
 public sealed class DebugScenarioTestPanel : MonoBehaviour
 {
-    private const KeyCode ToggleKey = KeyCode.F2;
+    private const Key ToggleKey = Key.F2;
     private const string PrimaryFontAssetPath = "Assets/Fonts/Morisawa/BO-A1GothicStdN-Regular.otf";
     private const string SecondaryFontAssetPath = "Assets/Fonts/Morisawa/BO-A1GothicStdN-Medium.otf";
 
@@ -110,7 +112,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(ToggleKey))
+        if (DeviceInput.WasKeyPressed(ToggleKey))
         {
             if (_panelRoot == null)
             {
@@ -119,7 +121,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
 
             SetVisible(_panelRoot == null || !_panelRoot.gameObject.activeSelf);
         }
-        else if (_panelRoot != null && _panelRoot.gameObject.activeSelf && Input.GetKeyDown(KeyCode.Escape))
+        else if (_panelRoot != null && _panelRoot.gameObject.activeSelf && DeviceInput.WasKeyPressed(Key.Escape))
         {
             SetVisible(false);
         }
@@ -425,9 +427,9 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             return;
         }
 
-        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        bool additive = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
-                        Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand);
+        bool shift = DeviceInput.IsKeyPressed(Key.LeftShift) || DeviceInput.IsKeyPressed(Key.RightShift);
+        bool additive = DeviceInput.IsKeyPressed(Key.LeftCtrl) || DeviceInput.IsKeyPressed(Key.RightCtrl) ||
+                        DeviceInput.IsKeyPressed(Key.LeftMeta) || DeviceInput.IsKeyPressed(Key.RightMeta);
 
         if (shift && _selectedTest != null)
         {
@@ -1274,7 +1276,8 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             return;
         }
 
-        var eventSystemObject = new GameObject("DebugScenarioTestEventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        var eventSystemObject = new GameObject("DebugScenarioTestEventSystem", typeof(EventSystem), typeof(UnityEngine.InputSystem.UI.InputSystemUIInputModule));
+        InputSystemTextInput.Attach(eventSystemObject.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>());
         DontDestroyOnLoad(eventSystemObject);
     }
 

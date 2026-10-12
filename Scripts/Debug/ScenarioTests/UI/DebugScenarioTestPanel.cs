@@ -9,6 +9,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using EightAID.EIGHTAIDLib.Input;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -102,6 +103,14 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
     {
         BuildUi();
         SetVisible(false);
+    }
+
+    private void OnEnable() => SceneManager.sceneLoaded += HandleSceneLoaded;
+    private void OnDisable() => SceneManager.sceneLoaded -= HandleSceneLoaded;
+
+    private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (DebugAvailability.IsEnabled) EnsureEventSystem();
     }
 
     private void Update()
@@ -1278,7 +1287,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
 
         var eventSystemObject = new GameObject("DebugScenarioTestEventSystem", typeof(EventSystem), typeof(UnityEngine.InputSystem.UI.InputSystemUIInputModule));
         InputSystemTextInput.Attach(eventSystemObject.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>());
-        DontDestroyOnLoad(eventSystemObject);
+        // 代替入力をシーン内に置き、シーン遷移時に通常の入力へ引き継ぐ。
     }
 
     private static Sprite GetFallbackSprite()

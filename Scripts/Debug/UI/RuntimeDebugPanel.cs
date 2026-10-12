@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using EightAID.EIGHTAIDLib.Input;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -107,6 +108,14 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     {
         BuildUi();
         SetVisible(false);
+    }
+
+    private void OnEnable() => SceneManager.sceneLoaded += HandleSceneLoaded;
+    private void OnDisable() => SceneManager.sceneLoaded -= HandleSceneLoaded;
+
+    private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (DebugAvailability.IsEnabled) EnsureEventSystem();
     }
 
     private void Update()
@@ -272,7 +281,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
         var eventSystemObject = new GameObject("RuntimeDebugEventSystem", typeof(EventSystem), typeof(UnityEngine.InputSystem.UI.InputSystemUIInputModule));
         InputSystemTextInput.Attach(eventSystemObject.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>());
-        DontDestroyOnLoad(eventSystemObject);
+        // シーン側の EventSystem と競合しないよう、代替入力もシーンと一緒に破棄する。
+        // 次のシーンに入力がなければ HandleSceneLoaded が再作成する。
     }
 
     private static RectTransform CreatePanelRoot(Transform parent, Sprite sprite)

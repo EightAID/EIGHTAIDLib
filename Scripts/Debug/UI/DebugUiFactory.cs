@@ -295,7 +295,7 @@ public static class DebugUiFactory
         return button;
     }
 
-    public static RectTransform CreateScrollContent(RectTransform parent, Sprite sprite, float height, bool expandHeight = false)
+    public static RectTransform CreateScrollContent(RectTransform parent, Sprite sprite, float height, bool expandHeight = false, bool automaticLayout = true)
     {
         var root = new GameObject("ScrollView", typeof(RectTransform), typeof(Image), typeof(Mask), typeof(ScrollRect), typeof(LayoutElement));
         root.transform.SetParent(parent, false);
@@ -319,7 +319,7 @@ public static class DebugUiFactory
         }
         layout.flexibleHeight = expandHeight ? 1f : 0f;
 
-        var contentObject = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        var contentObject = new GameObject("Content", typeof(RectTransform));
         contentObject.transform.SetParent(root.transform, false);
 
         RectTransform content = contentObject.GetComponent<RectTransform>();
@@ -329,14 +329,17 @@ public static class DebugUiFactory
         content.offsetMin = new Vector2(6f, 0f);
         content.offsetMax = new Vector2(-6f, 0f);
 
-        VerticalLayoutGroup contentLayout = contentObject.GetComponent<VerticalLayoutGroup>();
-        contentLayout.spacing = 4f;
-        contentLayout.padding = new RectOffset(5, 5, 5, 5);
-        contentLayout.childControlWidth = true;
-        contentLayout.childForceExpandWidth = true;
-        contentLayout.childControlHeight = true;
-        contentLayout.childForceExpandHeight = false;
-        contentObject.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        if (automaticLayout)
+        {
+            VerticalLayoutGroup contentLayout = contentObject.AddComponent<VerticalLayoutGroup>();
+            contentLayout.spacing = 4f;
+            contentLayout.padding = new RectOffset(5, 5, 5, 5);
+            contentLayout.childControlWidth = true;
+            contentLayout.childForceExpandWidth = true;
+            contentLayout.childControlHeight = true;
+            contentLayout.childForceExpandHeight = false;
+            contentObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        }
 
         ScrollRect scroll = root.GetComponent<ScrollRect>();
         scroll.viewport = root.GetComponent<RectTransform>();

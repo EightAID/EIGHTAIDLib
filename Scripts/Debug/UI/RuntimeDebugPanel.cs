@@ -29,6 +29,23 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
     private static RuntimeDebugPanel _instance;
     private static Sprite _fallbackSprite;
+    private Font _font;
+    private Canvas _canvas;
+    private ScrollRect _commandScroll;
+    private Button _subcategoryButton;
+    private Text _commandCountText;
+    private Text _emptyCommandText;
+    private string[] _categories = Array.Empty<string>();
+    private readonly Dictionary<string, Button> _categoryButtons = new Dictionary<string, Button>(StringComparer.Ordinal);
+    private readonly List<RuntimeDebugCommandRow> _rowViews = new List<RuntimeDebugCommandRow>();
+    private const float CommandRowHeight = 56f;
+    private const float CommandRowStride = 60f;
+    private float _lastViewportHeight;
+    private bool _refreshPending;
+    private bool _rebuildArguments;
+    private InputAction _cancelAction;
+    private bool _cancelPending;
+    private GameObject _previousSelected;
 
     private RectTransform _panelRoot;
     private RectTransform _commandListContent;
@@ -54,6 +71,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private readonly Dictionary<string, List<GameObject>> _argumentRows = new Dictionary<string, List<GameObject>>(StringComparer.Ordinal);
     private readonly List<Image> _commandRows = new List<Image>();
     private readonly List<string> _logLines = new List<string>();
+
+    public static Canvas DebugCanvas => _instance != null ? _instance._canvas : null;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureExists()
@@ -104,18 +123,29 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         DontDestroyOnLoad(gameObject);
     }
 
-    private void Start()
+    private void OnEnable() => SceneManager.sceneLoaded += HandleSceneLoaded;
+    private void OnDisable()
     {
-        BuildUi();
-        SetVisible(false);
+        SceneManager.sceneLoaded -= HandleSceneLoaded;
+        ReleaseCancelAction();
     }
 
-    private void OnEnable() => SceneManager.sceneLoaded += HandleSceneLoaded;
-    private void OnDisable() => SceneManager.sceneLoaded -= HandleSceneLoaded;
+    private void ReleaseCancelAction()
+    {
+        if (_cancelAction == null) return;
+        _cancelAction.performed -= HandleCancelAction;
+        _cancelAction = null;
+    }
+
+    private void HandleCancelAction(InputAction.CallbackContext context)
+    {
+        _cancelPending = true;
+    }
 
     private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        if (DebugAvailability.IsEnabled) EnsureEventSystem();
+        if (DebugAvailability.IsEnabled && _panelRoot != null) EnsureEventSystem();
+        _rebuildArguments = true;
     }
 
     private void Update()
@@ -133,7 +163,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
                 BuildUi();
             }
 
-            SetVisible(_panelRoot == null || !_panelRoot.gameObject.activeSelf);
+            SetVisible(!_hasPausedGame);
             return;
         }
 
@@ -144,8 +174,9 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
         InputSystemBase.SetInputBlockedForDebugUi(true);
 
-        if (DeviceInput.WasKeyPressed(Key.Escape))
+        if (_cancelPending || DeviceInput.WasKeyPressed(Key.Escape))
         {
+            _cancelPending = false;
             if (_choicePopupRoot != null && _choicePopupRoot.gameObject.activeSelf)
             {
                 HideChoicePopup();
@@ -156,20 +187,34 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             return;
         }
 
+        if (_refreshPending)
+        {
+            _refreshPending = false;
+            RefreshCommandList();
+        }
+
+        if (_choicePopupRoot.gameObject.activeSelf)
+        {
+            return;
+        }
+
         if (IsTextInputFocused())
         {
             return;
         }
 
-        if (DeviceInput.WasKeyPressed(Key.UpArrow))
+        GameObject currentSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+        bool noSelection = currentSelection == null;
+        if (noSelection && DeviceInput.WasKeyPressed(Key.UpArrow))
         {
             MoveSelection(-1);
         }
-        else if (DeviceInput.WasKeyPressed(Key.DownArrow))
+        else if (noSelection && DeviceInput.WasKeyPressed(Key.DownArrow))
         {
             MoveSelection(1);
         }
-        else if (DeviceInput.WasKeyPressed(Key.Enter) || DeviceInput.WasKeyPressed(Key.NumpadEnter))
+        else if ((noSelection || currentSelection.GetComponent<RuntimeDebugCommandRow>() != null) &&
+                 (DeviceInput.WasKeyPressed(Key.Enter) || DeviceInput.WasKeyPressed(Key.NumpadEnter)))
         {
             ExecuteSelectedCommand();
         }
@@ -186,6 +231,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         Sprite sprite = GetFallbackSprite();
         EnsureEventSystem();
         Canvas canvas = CreateCanvas();
+        _canvas = canvas;
 
         _panelRoot = CreatePanelRoot(canvas.transform, sprite);
         _choicePopupRoot = CreateChoicePopupRoot(_panelRoot, sprite);
@@ -198,11 +244,22 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         _searchInput = DebugUiFactory.CreateInputField(header, font, sprite, "> コマンド名、カテゴリ、IDで検索");
         _searchInput.textComponent.fontSize = 22;
         ((Text)_searchInput.placeholder).fontSize = 18;
-        _searchInput.onValueChanged.AddListener(_ => RefreshCommandList());
+        _searchInput.onValueChanged.AddListener(_ => _refreshPending = true);
+        DebugUiFactory.CreateButton(header, font, sprite, "検索クリア", () => _searchInput.text = string.Empty, 112f, 36f);
 
         CreateSectionTitle(left, font, "コマンド一覧");
         _categoryFilterContent = CreateCategoryFilterBar(left);
-        _commandListContent = DebugUiFactory.CreateScrollContent(left, sprite, 470f, true);
+        _subcategoryButton = DebugUiFactory.CreateButton(left, font, sprite, "すべての分類  ▾", ShowSubcategoryChoices, 260f, 32f);
+        _commandCountText = DebugUiFactory.CreateLabel(left, font, 13, TextAnchor.MiddleLeft, new Color(.65f, .76f, .85f));
+        _commandCountText.GetComponent<LayoutElement>().preferredHeight = 20f;
+        _commandListContent = DebugUiFactory.CreateScrollContent(left, sprite, 360f, true, false);
+        _commandScroll = _commandListContent.GetComponentInParent<ScrollRect>();
+        _commandScroll.onValueChanged.AddListener(_ => RefreshVirtualCommandRows());
+        _emptyCommandText = DebugUiFactory.CreateLabel(_commandScroll.viewport, font, 16, TextAnchor.MiddleCenter, Color.white);
+        _emptyCommandText.text = "該当するコマンドがありません。検索や分類を変更してください。";
+        DebugUiFactory.Stretch(_emptyCommandText.rectTransform, 12f, 12f, 12f, 12f);
+        _emptyCommandText.raycastTarget = false;
+        _emptyCommandText.gameObject.SetActive(false);
 
         CreateSectionTitle(right, font, "詳細と引数");
         _titleText = DebugUiFactory.CreateLabel(right, font, 24, TextAnchor.MiddleLeft, Color.white);
@@ -224,7 +281,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         CreateSectionTitle(log, font, "実行ログ");
         _logContent = DebugUiFactory.CreateScrollContent(log, sprite, 104f);
         AddLog("デバッグコマンドパネルを起動しました。");
-        RefreshCommandList();
+        _panelRoot.gameObject.SetActive(false);
     }
 
     private static Canvas CreateCanvas()
@@ -406,21 +463,15 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
     private static RectTransform CreateCategoryFilterBar(RectTransform parent)
     {
-        var bar = new GameObject("CategoryFilterBar", typeof(RectTransform), typeof(GridLayoutGroup), typeof(LayoutElement));
+        var bar = new GameObject("CategoryFilterBar", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         bar.transform.SetParent(parent, false);
-
-        LayoutElement layoutElement = bar.GetComponent<LayoutElement>();
-        layoutElement.preferredHeight = 68f;
-        layoutElement.flexibleWidth = 1f;
-
-        GridLayoutGroup layout = bar.GetComponent<GridLayoutGroup>();
-        layout.cellSize = new Vector2(104f, 30f);
-        layout.spacing = new Vector2(6f, 6f);
-        layout.startCorner = GridLayoutGroup.Corner.UpperLeft;
-        layout.startAxis = GridLayoutGroup.Axis.Horizontal;
-        layout.childAlignment = TextAnchor.UpperLeft;
-        layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-        layout.constraintCount = 7;
+        bar.GetComponent<LayoutElement>().preferredHeight = 34f;
+        var layout = bar.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 5f;
+        layout.childControlWidth = true;
+        layout.childForceExpandWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandHeight = true;
         return bar.GetComponent<RectTransform>();
     }
 
@@ -435,6 +486,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         if (visible && !wasVisible)
         {
             DebugScenarioTestPanel.HideNow();
+            _previousSelected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             _resumeTimeScale = Time.timeScale;
             _inputBlockedBeforeVisible = InputSystemBase.IsInputBlockedForDebugUi;
             InputSystemBase.SetDebugUiInputCaptured(true);
@@ -447,19 +499,28 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         HideChoicePopup();
         if (visible)
         {
+            EnsureEventSystem();
+            _cancelPending = false;
+            ReleaseCancelAction();
+            var module = EventSystem.current.currentInputModule as UnityEngine.InputSystem.UI.InputSystemUIInputModule;
+            _cancelAction = module != null ? module.cancel?.action : null;
+            if (_cancelAction != null) _cancelAction.performed += HandleCancelAction;
+            _rebuildArguments = true;
+            _refreshPending = false;
             RefreshCommandList();
             FocusSearchInput();
-            if (_selectedCommand != null)
-            {
-                SelectCommand(_selectedCommand);
-            }
         }
         else if (wasVisible && _hasPausedGame)
         {
             Time.timeScale = _resumeTimeScale;
             InputSystemBase.SetDebugUiInputCaptured(false);
             InputSystemBase.SetInputBlockedForDebugUi(_inputBlockedBeforeVisible);
+            ReleaseCancelAction();
             ClearSelectedDebugUi();
+            if (_previousSelected != null && _previousSelected.activeInHierarchy && EventSystem.current != null)
+            {
+                EventSystem.current.SetSelectedGameObject(_previousSelected);
+            }
             _hasPausedGame = false;
         }
     }
@@ -497,45 +558,23 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             return;
         }
 
-        foreach (Transform child in _commandListContent)
-        {
-            Destroy(child.gameObject);
-        }
-
-        _commandRows.Clear();
         Font font = LoadFont();
         Sprite sprite = GetFallbackSprite();
-        string search = _searchInput != null ? _searchInput.text : string.Empty;
+        string search = _searchInput.text;
         var context = new DebugCommandContext(new DebugArgumentValues());
-        IReadOnlyList<DebugCommand> allVisibleCommands = DebugCommandRegistry.GetVisibleCommands(context, string.Empty);
-        RefreshCategoryFilters(allVisibleCommands, font, sprite);
+        IReadOnlyList<DebugCommand> allCommands = DebugCommandRegistry.GetVisibleCommands(context, string.Empty);
+        RefreshCategoryFilters(allCommands, font, sprite);
+        _visibleCommands = allCommands.Where(command => MatchesCategory(command.Category, _selectedCategory) &&
+            DebugCommandRegistry.MatchesSearch(command, search)).ToArray();
 
-        IEnumerable<DebugCommand> filteredCommands = DebugCommandRegistry.GetVisibleCommands(context, search);
-        if (!string.IsNullOrWhiteSpace(_selectedCategory))
-        {
-            filteredCommands = filteredCommands.Where(command => string.Equals(command.Category, _selectedCategory, StringComparison.Ordinal));
-        }
-
-        _visibleCommands = filteredCommands.ToArray();
-
-        if (_selectedIndex >= _visibleCommands.Count)
-        {
-            _selectedIndex = Mathf.Max(0, _visibleCommands.Count - 1);
-        }
-
-        for (int i = 0; i < _visibleCommands.Count; i++)
-        {
-            DebugCommand command = _visibleCommands[i];
-            DebugCommand captured = command;
-            int capturedIndex = i;
-            Image rowImage = CreateCommandRow(_commandListContent, font, sprite, command, () =>
-            {
-                _selectedIndex = capturedIndex;
-                SelectCommand(captured);
-                UpdateCommandRowSelection();
-            });
-            _commandRows.Add(rowImage);
-        }
+        int previousIndex = _selectedCommand == null ? -1 : Array.FindIndex((DebugCommand[])_visibleCommands, command => ReferenceEquals(command, _selectedCommand));
+        _selectedIndex = previousIndex >= 0 ? previousIndex : 0;
+        _commandCountText.text = $"{_visibleCommands.Count} 件 / 全 {allCommands.Count} 件  ·  ↑↓ 選択  /  Enter 実行  /  Esc 閉じる";
+        _emptyCommandText.gameObject.SetActive(_visibleCommands.Count == 0);
+        _commandListContent.sizeDelta = new Vector2(_commandListContent.sizeDelta.x, _visibleCommands.Count * CommandRowStride + 10f);
+        _commandScroll.StopMovement();
+        EnsureSelectedCommandInView();
+        RefreshVirtualCommandRows();
 
         if (_visibleCommands.Count > 0)
         {
@@ -545,98 +584,150 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         {
             SelectNoCommand();
         }
+    }
 
-        UpdateCommandRowSelection();
+    private static string CategoryGroup(string category)
+    {
+        int separator = category.IndexOf(" / ", StringComparison.Ordinal);
+        return separator < 0 ? category : category.Substring(0, separator);
+    }
+
+    private static bool MatchesCategory(string category, string selected)
+    {
+        return string.IsNullOrEmpty(selected) || string.Equals(category, selected, StringComparison.Ordinal) ||
+            category.StartsWith(selected + " / ", StringComparison.Ordinal);
     }
 
     private void RefreshCategoryFilters(IReadOnlyList<DebugCommand> commands, Font font, Sprite sprite)
     {
-        if (_categoryFilterContent == null)
-        {
-            return;
-        }
-
-        foreach (Transform child in _categoryFilterContent)
-        {
-            Destroy(child.gameObject);
-        }
-
-        string[] categories = commands
-            .Select(command => command.Category)
-            .Where(category => !string.IsNullOrWhiteSpace(category))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        if (!string.IsNullOrWhiteSpace(_selectedCategory) && !categories.Contains(_selectedCategory))
+        _categories = commands.Select(command => command.Category).Distinct(StringComparer.Ordinal).ToArray();
+        if (!_categories.Any(category => MatchesCategory(category, _selectedCategory)))
         {
             _selectedCategory = string.Empty;
         }
 
-        CreateCategoryButton("すべて", string.Empty, font, sprite);
-        foreach (string category in categories)
+        string[] groups = new[] { string.Empty }.Concat(_categories.Select(CategoryGroup).Distinct(StringComparer.Ordinal)).ToArray();
+        foreach (var pair in _categoryButtons)
         {
-            CreateCategoryButton(category, category, font, sprite);
+            pair.Value.gameObject.SetActive(groups.Contains(pair.Key));
         }
-
-        Button clearSearch = DebugUiFactory.CreateButton(
-            _categoryFilterContent,
-            font,
-            sprite,
-            "検索クリア",
-            () =>
+        foreach (string group in groups)
+        {
+            if (!_categoryButtons.TryGetValue(group, out Button button))
             {
-                if (_searchInput != null)
-                {
-                    _searchInput.text = string.Empty;
-                }
-
-                _selectedIndex = 0;
-                RefreshCommandList();
-            },
-            118f,
-            28f);
-        clearSearch.GetComponent<Image>().color = new Color(0.20f, 0.22f, 0.25f, 0.96f);
+                string value = group;
+                button = DebugUiFactory.CreateButton(_categoryFilterContent, font, sprite,
+                    string.IsNullOrEmpty(group) ? "すべて" : group,
+                    () => { _selectedCategory = value; RefreshCommandList(); }, 80f, 34f, true);
+                Text label = button.GetComponentInChildren<Text>();
+                label.alignment = TextAnchor.MiddleCenter;
+                label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                label.verticalOverflow = VerticalWrapMode.Truncate;
+                _categoryButtons.Add(group, button);
+            }
+            bool selected = group == CategoryGroup(_selectedCategory);
+            button.GetComponent<Image>().color = selected ? new Color(.16f, .40f, .56f) : new Color(.12f, .17f, .22f);
+        }
+        _subcategoryButton.GetComponentInChildren<Text>().text = string.IsNullOrEmpty(_selectedCategory)
+            ? "細分類: すべて  ▾" : $"細分類: {_selectedCategory}  ▾";
     }
 
-    private void CreateCategoryButton(string label, string categoryValue, Font font, Sprite sprite)
+    private void ShowSubcategoryChoices()
     {
-        bool selected = string.Equals(_selectedCategory, categoryValue, StringComparison.Ordinal);
-        Color categoryColor = GetCategoryColor(categoryValue);
-        Button button = DebugUiFactory.CreateButton(
-            _categoryFilterContent,
-            font,
-            sprite,
-            label,
-            () =>
-            {
-                _selectedCategory = categoryValue;
-                _selectedIndex = 0;
-                RefreshCommandList();
-            },
-            108f,
-            28f);
-        button.GetComponent<Image>().color = selected
-            ? new Color(categoryColor.r, categoryColor.g, categoryColor.b, 0.96f)
-            : new Color(categoryColor.r, categoryColor.g, categoryColor.b, 0.32f);
+        string group = CategoryGroup(_selectedCategory);
+        string[] values = new[] { group }.Concat(_categories.Where(category => MatchesCategory(category, group) && category != group)).ToArray();
+        string[] labels = values.Select((value, index) => index == 0 ? "この分類のすべて" : value).ToArray();
+        ShowStableSearchableChoicePopup(_subcategoryButton.GetComponent<RectTransform>(), labels,
+            Mathf.Max(0, Array.IndexOf(values, _selectedCategory)), string.Empty, 0,
+            index => { _selectedCategory = values[index]; RefreshCommandList(); });
+    }
+
+    private void LateUpdate()
+    {
+        if (_panelRoot == null || !_panelRoot.gameObject.activeSelf)
+        {
+            return;
+        }
+        float height = _commandScroll.viewport.rect.height;
+        if (!Mathf.Approximately(height, _lastViewportHeight))
+        {
+            _lastViewportHeight = height;
+            EnsureSelectedCommandInView();
+            RefreshVirtualCommandRows();
+        }
+    }
+
+    private void RefreshVirtualCommandRows()
+    {
+        float height = Mathf.Max(0f, _commandScroll.viewport.rect.height);
+        int first = Mathf.Clamp(Mathf.FloorToInt((_commandListContent.anchoredPosition.y - 5f) / CommandRowStride),
+            0, Mathf.Max(0, _visibleCommands.Count - 1));
+        int count = Mathf.Min(_visibleCommands.Count - first, Mathf.CeilToInt(height / CommandRowStride) + 2);
+        while (_rowViews.Count < count)
+        {
+            Image image = CreateCommandRow(_commandListContent, LoadFont(), GetFallbackSprite());
+            _commandRows.Add(image);
+            _rowViews.Add(image.GetComponent<RuntimeDebugCommandRow>());
+        }
+        for (int i = 0; i < _rowViews.Count; i++)
+        {
+            RuntimeDebugCommandRow row = _rowViews[i];
+            row.gameObject.SetActive(i < count);
+            if (i >= count) continue;
+            int index = first + i;
+            row.Bind(_visibleCommands[index], index);
+            var rect = (RectTransform)row.transform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = Vector2.one;
+            rect.pivot = new Vector2(.5f, 1f);
+            rect.anchoredPosition = new Vector2(0f, -5f - index * CommandRowStride);
+            rect.sizeDelta = new Vector2(-10f, CommandRowHeight);
+        }
+        UpdateCommandRowSelection();
+    }
+
+    private void SelectCommandAt(int index)
+    {
+        if (index < 0 || index >= _visibleCommands.Count) return;
+        _selectedIndex = index;
+        SelectCommand(_visibleCommands[index]);
+        UpdateCommandRowSelection();
+    }
+
+    private void EnsureSelectedCommandInView()
+    {
+        float height = Mathf.Max(0f, _commandScroll.viewport.rect.height);
+        float top = _commandListContent.anchoredPosition.y;
+        float rowTop = 5f + _selectedIndex * CommandRowStride;
+        if (rowTop < top) top = rowTop;
+        else if (rowTop + CommandRowHeight > top + height) top = rowTop + CommandRowHeight - height;
+        top = Mathf.Clamp(top, 0f, Mathf.Max(0f, _commandListContent.sizeDelta.y - height));
+        _commandListContent.anchoredPosition = new Vector2(0f, top);
     }
 
     private void SelectCommand(DebugCommand command)
     {
+        bool rebuild = _rebuildArguments || !ReferenceEquals(_selectedCommand, command);
+        _rebuildArguments = false;
         _selectedCommand = command;
+        if (!rebuild)
+        {
+            return;
+        }
         _valueReaders.Clear();
         _argumentRows.Clear();
         HideChoicePopup();
 
         foreach (Transform child in _argumentContent)
         {
+            child.gameObject.SetActive(false);
             Destroy(child.gameObject);
         }
 
         var context = new DebugCommandContext(new DebugArgumentValues());
         string unavailableReason = command.GetUnavailableReason(context);
         _titleText.text = $"{command.Category} / {command.Label}";
-        _descriptionText.text = string.IsNullOrWhiteSpace(command.Description) ? command.Id : command.Description;
+        _descriptionText.text = command.Id + "\n" + command.Description;
         _executeButton.interactable = string.IsNullOrWhiteSpace(unavailableReason);
         _statusText.text = string.IsNullOrWhiteSpace(unavailableReason) ? string.Empty : unavailableReason;
 
@@ -1284,66 +1375,29 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         }
     }
 
-    private static Image CreateCommandRow(RectTransform parent, Font font, Sprite sprite, DebugCommand command, Action onClick)
+    private Image CreateCommandRow(RectTransform parent, Font font, Sprite sprite)
     {
-        var row = new GameObject(command.Id + "Row", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        var row = new GameObject("CommandRow", typeof(RectTransform), typeof(Image), typeof(RuntimeDebugCommandRow));
         row.transform.SetParent(parent, false);
-
         Image image = row.GetComponent<Image>();
         image.sprite = sprite;
-        image.type = Image.Type.Sliced;
-        image.color = new Color(1f, 1f, 1f, 0.04f);
-
-        LayoutElement layout = row.GetComponent<LayoutElement>();
-        layout.preferredHeight = 48f;
-
-        Button button = row.GetComponent<Button>();
+        var button = row.GetComponent<RuntimeDebugCommandRow>();
         button.targetGraphic = image;
-        button.onClick.AddListener(() => onClick?.Invoke());
-
-        var stripeObject = new GameObject("CategoryStripe", typeof(RectTransform), typeof(Image));
-        stripeObject.transform.SetParent(row.transform, false);
-        RectTransform stripeRect = stripeObject.GetComponent<RectTransform>();
-        stripeRect.anchorMin = new Vector2(0f, 0f);
-        stripeRect.anchorMax = new Vector2(0f, 1f);
-        stripeRect.pivot = new Vector2(0f, 0.5f);
-        stripeRect.sizeDelta = new Vector2(4f, 0f);
-        stripeRect.anchoredPosition = Vector2.zero;
-        stripeObject.GetComponent<Image>().color = GetCategoryColor(command.Category);
-
-        Text category = DebugUiFactory.CreateLabel(row.GetComponent<RectTransform>(), font, 12, TextAnchor.MiddleCenter, new Color(0.78f, 0.9f, 1f));
-        category.text = command.Category.ToUpperInvariant();
-        category.horizontalOverflow = HorizontalWrapMode.Overflow;
-        category.verticalOverflow = VerticalWrapMode.Truncate;
-        category.GetComponent<LayoutElement>().ignoreLayout = true;
-        category.rectTransform.anchorMin = new Vector2(0f, 0f);
+        button.onClick.AddListener(() => SelectCommandAt(button.CommandIndex));
+        Text category = DebugUiFactory.CreateLabel((RectTransform)row.transform, font, 12, TextAnchor.MiddleCenter, new Color(.65f, .8f, .9f));
+        DebugUiFactory.Stretch(category.rectTransform, 6f, 4f, 0f, 4f);
         category.rectTransform.anchorMax = new Vector2(0f, 1f);
-        category.rectTransform.pivot = new Vector2(0f, 0.5f);
-        category.rectTransform.anchoredPosition = new Vector2(14f, 0f);
-        category.rectTransform.sizeDelta = new Vector2(92f, 0f);
-
-        Text title = DebugUiFactory.CreateLabel(row.GetComponent<RectTransform>(), font, 18, TextAnchor.UpperLeft, Color.white);
-        title.text = command.Label;
-        title.horizontalOverflow = HorizontalWrapMode.Overflow;
-        title.verticalOverflow = VerticalWrapMode.Truncate;
-        title.GetComponent<LayoutElement>().ignoreLayout = true;
-        DebugUiFactory.Stretch(title.rectTransform, 118f, 6f, 230f, 21f);
-
-        Text description = DebugUiFactory.CreateLabel(row.GetComponent<RectTransform>(), font, 12, TextAnchor.LowerLeft, new Color(0.62f, 0.68f, 0.74f));
-        description.text = string.IsNullOrWhiteSpace(command.Description)
-            ? "説明は未設定です"
-            : Truncate(command.Description, 120);
-        description.horizontalOverflow = HorizontalWrapMode.Overflow;
-        description.verticalOverflow = VerticalWrapMode.Truncate;
-        description.GetComponent<LayoutElement>().ignoreLayout = true;
-        DebugUiFactory.Stretch(description.rectTransform, 118f, 27f, 18f, 5f);
-
-        Text id = DebugUiFactory.CreateLabel(row.GetComponent<RectTransform>(), font, 11, TextAnchor.UpperRight, new Color(0.54f, 0.60f, 0.66f));
-        id.text = command.Id;
-        id.horizontalOverflow = HorizontalWrapMode.Overflow;
-        id.verticalOverflow = VerticalWrapMode.Truncate;
-        id.GetComponent<LayoutElement>().ignoreLayout = true;
-        DebugUiFactory.Stretch(id.rectTransform, 520f, 7f, 14f, 25f);
+        category.rectTransform.offsetMax = new Vector2(126f, -4f);
+        Text title = DebugUiFactory.CreateLabel((RectTransform)row.transform, font, 18, TextAnchor.UpperLeft, Color.white);
+        DebugUiFactory.Stretch(title.rectTransform, 140f, 5f, 10f, 27f);
+        Text description = DebugUiFactory.CreateLabel((RectTransform)row.transform, font, 12, TextAnchor.LowerLeft, new Color(.64f, .70f, .77f));
+        DebugUiFactory.Stretch(description.rectTransform, 140f, 31f, 10f, 5f);
+        foreach (Text text in new[] { category, title, description })
+        {
+            text.verticalOverflow = VerticalWrapMode.Truncate;
+            text.raycastTarget = false;
+        }
+        button.Initialize(category, title, description, SelectCommandAt, MoveSelection);
         return image;
     }
 
@@ -1353,11 +1407,12 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         _valueReaders.Clear();
         foreach (Transform child in _argumentContent)
         {
+            child.gameObject.SetActive(false);
             Destroy(child.gameObject);
         }
 
-        _titleText.text = "No matching command";
-        _descriptionText.text = "Change the command line filter.";
+        _titleText.text = "該当するコマンドがありません";
+        _descriptionText.text = "検索や分類を変更してください。";
         _executeButton.interactable = false;
         _statusText.text = string.Empty;
     }
@@ -1371,98 +1426,23 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
         _selectedIndex = (_selectedIndex + delta + _visibleCommands.Count) % _visibleCommands.Count;
         SelectCommand(_visibleCommands[_selectedIndex]);
-        UpdateCommandRowSelection();
+        EnsureSelectedCommandInView();
+        RefreshVirtualCommandRows();
+        RuntimeDebugCommandRow selected = _rowViews.FirstOrDefault(row => row.gameObject.activeSelf && row.CommandIndex == _selectedIndex);
+        if (selected != null && EventSystem.current != null)
+        {
+            EventSystem.current.SetSelectedGameObject(selected.gameObject);
+        }
     }
 
     private void UpdateCommandRowSelection()
     {
         for (int i = 0; i < _commandRows.Count; i++)
         {
-            _commandRows[i].color = i == _selectedIndex
+            _commandRows[i].color = _rowViews[i].CommandIndex == _selectedIndex
                 ? new Color(0.12f, 0.35f, 0.50f, 0.92f)
                 : new Color(1f, 1f, 1f, 0.04f);
         }
-    }
-
-    private static Color GetCategoryColor(string category)
-    {
-        if (string.IsNullOrWhiteSpace(category))
-        {
-            return new Color(0.45f, 0.62f, 0.74f);
-        }
-
-        if (category.Contains("シーン") || category.Contains("Scene"))
-        {
-            return new Color(0.28f, 0.58f, 0.95f);
-        }
-
-        if (category.Contains("カード") || category.Contains("Card"))
-        {
-            return new Color(0.28f, 0.78f, 0.58f);
-        }
-
-        if (category.Contains("会話") || category.Contains("Dialogue"))
-        {
-            return new Color(0.68f, 0.48f, 0.95f);
-        }
-
-        if (category.Contains("マップ") || category.Contains("Stage"))
-        {
-            return new Color(0.88f, 0.68f, 0.28f);
-        }
-
-        if (category.Contains("システム") || category.Contains("System"))
-        {
-            return new Color(0.95f, 0.42f, 0.44f);
-        }
-
-        if (category.Contains("テスト") || category.Contains("Test"))
-        {
-            return new Color(0.40f, 0.86f, 0.62f);
-        }
-
-        if (category.Contains("セーブ") || category.Contains("Save"))
-        {
-            return new Color(0.50f, 0.95f, 0.70f);
-        }
-
-        if (category.Contains("プレイヤー") || category.Contains("Player"))
-        {
-            return new Color(1f, 0.72f, 0.35f);
-        }
-
-        if (category.Contains("表示") || category.Contains("検証") || category.Contains("Utility"))
-        {
-            return new Color(0.45f, 0.78f, 0.95f);
-        }
-
-        switch (category)
-        {
-            case "Scene":
-            case "シーン":
-                return new Color(0.45f, 0.70f, 1f);
-            case "Save":
-            case "セーブ":
-                return new Color(0.50f, 0.95f, 0.70f);
-            case "Player":
-            case "プレイヤー":
-                return new Color(1f, 0.72f, 0.35f);
-            case "Utility":
-            case "ユーティリティ":
-                return new Color(0.78f, 0.62f, 1f);
-            default:
-                return new Color(0.55f, 0.72f, 0.84f);
-        }
-    }
-
-    private static string Truncate(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-        {
-            return text;
-        }
-
-        return text.Substring(0, maxLength - 3) + "...";
     }
 
     private void AddLog(string message)
@@ -1535,7 +1515,14 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         return _fallbackSprite;
     }
 
-    private static Font LoadFont()
+    private Font LoadFont()
+    {
+        if (_font != null) return _font;
+        _font = ResolveFont();
+        return _font;
+    }
+
+    private static Font ResolveFont()
     {
 #if UNITY_EDITOR
         Font projectFont = AssetDatabase.LoadAssetAtPath<Font>(PrimaryFontAssetPath);

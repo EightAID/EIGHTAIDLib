@@ -6,6 +6,23 @@ using System.Linq;
 public static class DebugCommandRegistry
 {
     private static readonly Dictionary<string, DebugCommand> CommandsById = new Dictionary<string, DebugCommand>(StringComparer.Ordinal);
+    private static readonly Dictionary<string, int> CategoryOrder = new Dictionary<string, int>(StringComparer.Ordinal);
+
+    public static void SetCategoryOrder(params string[] categories)
+    {
+        CategoryOrder.Clear();
+        for (int i = 0; i < categories.Length; i++)
+        {
+            CategoryOrder[categories[i]] = i;
+        }
+    }
+
+    private static int GetCategoryOrder(string category)
+    {
+        int separator = category.IndexOf(" / ", StringComparison.Ordinal);
+        string group = separator < 0 ? category : category.Substring(0, separator);
+        return CategoryOrder.TryGetValue(group, out int index) ? index : int.MaxValue;
+    }
 
     /// <summary>
     /// コマンドを登録します。同じ ID が登録された場合は後から登録した内容で上書きします。
@@ -28,11 +45,12 @@ public static class DebugCommandRegistry
 
         if (!string.IsNullOrWhiteSpace(normalizedSearch))
         {
-            commands = commands.Where(command => Matches(command, normalizedSearch));
+            commands = commands.Where(command => MatchesSearch(command, normalizedSearch));
         }
 
         return commands
-            .OrderBy(command => command.Category, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(command => GetCategoryOrder(command.Category))
+            .ThenBy(command => command.Category, StringComparer.OrdinalIgnoreCase)
             .ThenBy(command => command.Label, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -48,8 +66,10 @@ public static class DebugCommandRegistry
         return CommandsById.TryGetValue(id, out command);
     }
 
-    private static bool Matches(DebugCommand command, string searchText)
+    public static bool MatchesSearch(DebugCommand command, string searchText)
     {
+        searchText = searchText?.Trim();
+        if (string.IsNullOrEmpty(searchText)) return true;
         return Contains(command.Id, searchText) ||
                Contains(command.Label, searchText) ||
                Contains(command.Category, searchText) ||

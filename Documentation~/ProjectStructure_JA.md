@@ -32,6 +32,7 @@
 - UI演出: `Scripts/Effect/UIEffectTransitionUtility.cs`、`TransformShakeUtility.cs`
 - ローカライズ: `Scripts/Localization/README.md`
 - デバッグコマンド: `Scripts/Debug/Core/DebugCommandRegistry.cs`
+- コマンドUI: `Scripts/Debug/UI/RuntimeDebugPanel.cs`（初回表示時に構築、分類は `大分類 / 細分類`）。`RuntimeDebugCommandRow`を表示範囲だけ再利用し、EventSystemの選択・上下移動をコマンド詳細へ接続する。`DebugUiFactory.CreateScrollContent`の`automaticLayout=false`で手動配置する。既定値は従来の自動Layout。検索条件の共有には`DebugCommandRegistry.MatchesSearch`を使う。大分類の表示順はホストが`SetCategoryOrder`で指定でき、省略時はカテゴリ名順。Canvas参照は`RuntimeDebugPanel.DebugCanvas`から取得でき、未構築時はnull。
 - シナリオテスト: `Scripts/Debug/ScenarioTests/DebugScenarioTestPanelSpec.md`
 
 ## 変更時チェック

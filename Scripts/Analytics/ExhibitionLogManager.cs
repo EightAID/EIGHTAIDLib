@@ -42,6 +42,16 @@ namespace EightAID.EIGHTAIDLib.Analytics
             GetOrCreate().EndSession(endReason);
         }
 
+        /// <summary>既存のプレイログと他のログを結び付ける。未開始時は識別子を作らない。</summary>
+        public static bool TryGetActiveSession(out string sessionId, out string machineId)
+        {
+            var manager = Instance;
+            bool active = manager != null && manager._hasActiveSession && !manager._hasEnded && manager._summary != null;
+            sessionId = active ? manager._summary.sessionId ?? string.Empty : string.Empty;
+            machineId = active ? manager._summary.machineId ?? string.Empty : string.Empty;
+            return active && !string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(machineId);
+        }
+
         public static void RecordEventSafe(string eventName, string stageId = null, string eventTitle = null, string reason = null, string result = null, int value = 0, string payload = null)
         {
             GetOrCreate().RecordEvent(eventName, stageId, eventTitle, reason, result, value, payload);

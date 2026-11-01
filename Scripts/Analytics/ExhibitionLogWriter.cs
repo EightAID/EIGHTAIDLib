@@ -16,12 +16,21 @@ namespace EightAID.EIGHTAIDLib.Analytics
         private static readonly Encoding CsvEncoding = new UTF8Encoding(true);
         private static readonly Encoding JsonEncoding = new UTF8Encoding(false);
 
+#if UNITY_EDITOR
+        // Editor tests can isolate their logs from real exhibition collections.
+        public static string EditorLogDirectoryOverride { get; set; }
+#endif
+
         private readonly string _logDirectory;
         private readonly string _sessionPrefix;
 
         public ExhibitionLogWriter(string sessionId, DateTime startedAtLocal)
         {
             _logDirectory = Path.Combine(Application.persistentDataPath, LogFolderName);
+#if UNITY_EDITOR
+            if (!string.IsNullOrWhiteSpace(EditorLogDirectoryOverride))
+                _logDirectory = EditorLogDirectoryOverride;
+#endif
             string safeSessionId = string.IsNullOrWhiteSpace(sessionId) ? "unknown" : sessionId;
             _sessionPrefix = $"{startedAtLocal:yyyyMMdd_HHmmss}_{safeSessionId}";
         }

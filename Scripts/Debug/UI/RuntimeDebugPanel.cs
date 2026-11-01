@@ -10,6 +10,7 @@ using EightAID.EIGHTAIDLib.Input;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using Unity.Profiling;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -26,6 +27,9 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private const string PrimaryFontAssetPath = "Assets/Fonts/Morisawa/BO-A1GothicStdN-Regular.otf";
     private const string SecondaryFontAssetPath = "Assets/Fonts/Morisawa/BO-A1GothicStdN-Medium.otf";
     private const int MaxLogLines = 18;
+    private static readonly ProfilerMarker BuildUiMarker = new ProfilerMarker("RuntimeDebugPanel.BuildUI");
+    private static readonly ProfilerMarker RefreshMarker = new ProfilerMarker("RuntimeDebugPanel.Refresh");
+    private static readonly ProfilerMarker ArgumentsMarker = new ProfilerMarker("RuntimeDebugPanel.Arguments");
 
     private static RuntimeDebugPanel _instance;
     private static Sprite _fallbackSprite;
@@ -42,10 +46,22 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private const float CommandRowStride = 60f;
     private float _lastViewportHeight;
     private bool _refreshPending;
+    private bool _commandsInitialized;
     private bool _rebuildArguments;
     private InputAction _cancelAction;
     private bool _cancelPending;
     private GameObject _previousSelected;
+    private Image _choiceBlocker;
+    private GameObject _choiceReturnSelection;
+    private Vector2 _popupDismissPosition;
+    private int _popupDismissFrame;
+    private readonly Dictionary<string, Action> _optionInitializers = new Dictionary<string, Action>(StringComparer.Ordinal);
+    private readonly Dictionary<string, Color> _categoryColors = new Dictionary<string, Color>(StringComparer.Ordinal);
+    private static readonly Color[] CategoryPalette =
+    {
+        new Color(.40f, .75f, 1f), new Color(1f, .53f, .48f), new Color(1f, .78f, .35f),
+        new Color(.82f, .61f, 1f), new Color(.40f, .85f, .72f), new Color(.65f, .75f, .88f)
+    };
 
     private RectTransform _panelRoot;
     private RectTransform _commandListContent;
@@ -123,11 +139,36 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         DontDestroyOnLoad(gameObject);
     }
 
-    private void OnEnable() => SceneManager.sceneLoaded += HandleSceneLoaded;
+    private void OnEnable()
+    {
+        SceneManager.sceneLoaded += HandleSceneLoaded;
+        InputSystem.onAfterUpdate += UpdateChoiceBlocker;
+    }
     private void OnDisable()
     {
         SceneManager.sceneLoaded -= HandleSceneLoaded;
+        InputSystem.onAfterUpdate -= UpdateChoiceBlocker;
         ReleaseCancelAction();
+    }
+
+    private void UpdateChoiceBlocker()
+    {
+        if (_choiceBlocker == null || !_choiceBlocker.gameObject.activeSelf ||
+            _choicePopupRoot.gameObject.activeSelf || Time.frameCount <= _popupDismissFrame || Mouse.current == null)
+        {
+            return;
+        }
+
+        var mouse = Mouse.current;
+        // Release before EventSystem raycasts so the next click works even without an idle hover frame.
+        // Keep the dismissing click and stationary synthetic pointer-enter blocked.
+        bool newClick = mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame;
+        bool moved = (mouse.position.ReadValue() - _popupDismissPosition).sqrMagnitude > 36f;
+        if (newClick || (!mouse.leftButton.isPressed && !mouse.rightButton.isPressed && moved) ||
+            mouse.scroll.ReadValue() != Vector2.zero)
+        {
+            _choiceBlocker.gameObject.SetActive(false);
+        }
     }
 
     private void ReleaseCancelAction()
@@ -173,7 +214,6 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         }
 
         InputSystemBase.SetInputBlockedForDebugUi(true);
-
         if (_cancelPending || DeviceInput.WasKeyPressed(Key.Escape))
         {
             _cancelPending = false;
@@ -222,6 +262,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
     private void BuildUi()
     {
+        using var sample = BuildUiMarker.Auto();
         if (_panelRoot != null)
         {
             return;
@@ -234,6 +275,12 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         _canvas = canvas;
 
         _panelRoot = CreatePanelRoot(canvas.transform, sprite);
+        _panelRoot.gameObject.SetActive(false);
+        var blocker = new GameObject("ChoiceBlocker", typeof(RectTransform), typeof(Image));
+        blocker.transform.SetParent(_panelRoot, false);
+        DebugUiFactory.Stretch((RectTransform)blocker.transform, 0f, 0f, 0f, 0f);
+        _choiceBlocker = blocker.GetComponent<Image>();
+        blocker.SetActive(false);
         _choicePopupRoot = CreateChoicePopupRoot(_panelRoot, sprite);
         RectTransform header = CreateHeader(_panelRoot, font, sprite);
         RectTransform main = CreateMainArea(_panelRoot);
@@ -253,7 +300,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         _commandCountText = DebugUiFactory.CreateLabel(left, font, 13, TextAnchor.MiddleLeft, new Color(.65f, .76f, .85f));
         _commandCountText.GetComponent<LayoutElement>().preferredHeight = 20f;
         _commandListContent = DebugUiFactory.CreateScrollContent(left, sprite, 360f, true, false);
-        _commandScroll = _commandListContent.GetComponentInParent<ScrollRect>();
+        _commandScroll = _commandListContent.GetComponentInParent<ScrollRect>(true);
         _commandScroll.onValueChanged.AddListener(_ => RefreshVirtualCommandRows());
         _emptyCommandText = DebugUiFactory.CreateLabel(_commandScroll.viewport, font, 16, TextAnchor.MiddleCenter, Color.white);
         _emptyCommandText.text = "該当するコマンドがありません。検索や分類を変更してください。";
@@ -272,6 +319,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         _argumentContent = DebugUiFactory.CreateScrollContent(right, sprite, 190f);
 
         _executeButton = DebugUiFactory.CreateButton(right, font, sprite, "実行  Enter", ExecuteSelectedCommand, 260f, 42f);
+        _executeButton.GetComponent<Image>().color = new Color(.15f, .46f, .32f);
         _executeButton.interactable = false;
 
         _statusText = DebugUiFactory.CreateLabel(right, font, 14, TextAnchor.UpperLeft, new Color(0.95f, 0.86f, 0.55f));
@@ -497,6 +545,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
         _panelRoot.gameObject.SetActive(visible);
         HideChoicePopup();
+        _choiceBlocker.gameObject.SetActive(false);
         if (visible)
         {
             EnsureEventSystem();
@@ -506,8 +555,18 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             _cancelAction = module != null ? module.cancel?.action : null;
             if (_cancelAction != null) _cancelAction.performed += HandleCancelAction;
             _rebuildArguments = true;
-            _refreshPending = false;
-            RefreshCommandList();
+            if (_commandsInitialized)
+            {
+                _refreshPending = false;
+                RefreshCommandList();
+            }
+            else
+            {
+                // Let the static panel finish its first layout before creating command rows
+                // and provider fields. This also gives virtualization the actual viewport size.
+                _commandCountText.text = "コマンドを準備中…";
+                _refreshPending = true;
+            }
             FocusSearchInput();
         }
         else if (wasVisible && _hasPausedGame)
@@ -553,12 +612,14 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
     private void RefreshCommandList()
     {
+        using var sample = RefreshMarker.Auto();
         if (_commandListContent == null)
         {
             return;
         }
 
         Font font = LoadFont();
+        _commandsInitialized = true;
         Sprite sprite = GetFallbackSprite();
         string search = _searchInput.text;
         var context = new DebugCommandContext(new DebugArgumentValues());
@@ -613,6 +674,12 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         }
         foreach (string group in groups)
         {
+            if (!_categoryColors.ContainsKey(group))
+            {
+                int paletteIndex = _categoryColors.Keys.Count(key => key.Length > 0);
+                _categoryColors[group] = group.Length == 0 ? new Color(.76f, .81f, .87f)
+                    : CategoryPalette[paletteIndex % CategoryPalette.Length];
+            }
             if (!_categoryButtons.TryGetValue(group, out Button button))
             {
                 string value = group;
@@ -626,11 +693,16 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
                 _categoryButtons.Add(group, button);
             }
             bool selected = group == CategoryGroup(_selectedCategory);
-            button.GetComponent<Image>().color = selected ? new Color(.16f, .40f, .56f) : new Color(.12f, .17f, .22f);
+            Color accent = GetCategoryColor(group);
+            button.GetComponent<Image>().color = Color.Lerp(new Color(.06f, .08f, .11f), accent, selected ? .65f : .22f);
+            button.GetComponentInChildren<Text>().color = selected ? Color.white : accent;
         }
         _subcategoryButton.GetComponentInChildren<Text>().text = string.IsNullOrEmpty(_selectedCategory)
             ? "細分類: すべて  ▾" : $"細分類: {_selectedCategory}  ▾";
     }
+
+    private Color GetCategoryColor(string category) => _categoryColors.TryGetValue(CategoryGroup(category), out Color color)
+        ? color : Color.white;
 
     private void ShowSubcategoryChoices()
     {
@@ -707,6 +779,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
     private void SelectCommand(DebugCommand command)
     {
+        using var sample = ArgumentsMarker.Auto();
         bool rebuild = _rebuildArguments || !ReferenceEquals(_selectedCommand, command);
         _rebuildArguments = false;
         _selectedCommand = command;
@@ -715,6 +788,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             return;
         }
         _valueReaders.Clear();
+        _optionInitializers.Clear();
         _argumentRows.Clear();
         HideChoicePopup();
 
@@ -727,6 +801,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         var context = new DebugCommandContext(new DebugArgumentValues());
         string unavailableReason = command.GetUnavailableReason(context);
         _titleText.text = $"{command.Category} / {command.Label}";
+        _titleText.color = GetCategoryColor(command.Category);
         _descriptionText.text = command.Id + "\n" + command.Description;
         _executeButton.interactable = string.IsNullOrWhiteSpace(unavailableReason);
         _statusText.text = string.IsNullOrWhiteSpace(unavailableReason) ? string.Empty : unavailableReason;
@@ -764,6 +839,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
                 (_valueReaders.TryGetValue(argument.VisibleWhenKey, out Func<object> reader) &&
                  string.Equals(reader()?.ToString(), argument.VisibleWhenValue, StringComparison.Ordinal));
             if (!_argumentRows.TryGetValue(argument.Key, out List<GameObject> rows)) continue;
+            if (visible && _optionInitializers.TryGetValue(argument.Key, out Action initialize)) initialize();
             foreach (GameObject row in rows) row.SetActive(visible);
         }
     }
@@ -834,33 +910,43 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
                 _valueReaders[argument.Key] = () => values.GetValue(enumIndexReader.Invoke());
                 break;
             case DebugArgumentKind.Option:
-                IReadOnlyList<DebugOption> debugOptions = DebugOptionProviderRegistry.GetOptions(argument.OptionProviderId, new DebugCommandContext(new DebugArgumentValues()));
-                List<string> optionLabels = debugOptions.Select(option => option.DisplayText).ToList();
-                if (optionLabels.Count == 0)
-                {
-                    optionLabels.Add("候補がありません");
-                }
-
+                IReadOnlyList<DebugOption> debugOptions = null;
+                var optionLabels = new List<string>();
                 int optionDefaultIndex = 0;
-                string defaultOptionId = argument.DefaultValue as string;
-                if (!string.IsNullOrWhiteSpace(defaultOptionId))
+                Button optionButton = DebugUiFactory.CreateChoiceRow(_argumentContent, font, sprite, argument.Label, out Text optionText);
+                void InitializeOptions()
                 {
+                    if (debugOptions != null) return;
+                    debugOptions = DebugOptionProviderRegistry.GetOptions(argument.OptionProviderId, new DebugCommandContext(new DebugArgumentValues()));
+                    optionLabels.AddRange(debugOptions.Select(option => option.DisplayText));
                     for (int i = 0; i < debugOptions.Count; i++)
                     {
-                        if (debugOptions[i].Id == defaultOptionId)
+                        if (debugOptions[i].Id == (argument.DefaultValue as string))
                         {
                             optionDefaultIndex = i;
                             break;
                         }
                     }
+                    optionText.text = debugOptions.Count > 0 ? optionLabels[optionDefaultIndex] : "候補がありません";
+                    optionButton.interactable = debugOptions.Count > 0;
                 }
-
-                CreateChoiceField(argument.Label, optionLabels, optionDefaultIndex, font, sprite, out Func<int> optionIndexReader, RefreshArgumentVisibility);
+                _optionInitializers[argument.Key] = InitializeOptions;
+                optionButton.onClick.AddListener(() =>
+                {
+                    InitializeOptions();
+                    ShowStableSearchableChoicePopup((RectTransform)optionButton.transform, optionLabels, optionDefaultIndex,
+                        string.Empty, 0, index =>
+                        {
+                            optionDefaultIndex = index;
+                            optionText.text = optionLabels[index];
+                            RefreshArgumentVisibility();
+                        });
+                });
                 _valueReaders[argument.Key] = () =>
                 {
-                    int index = optionIndexReader.Invoke();
-                    return index >= 0 && index < debugOptions.Count
-                        ? debugOptions[index].Id
+                    InitializeOptions();
+                    return optionDefaultIndex >= 0 && optionDefaultIndex < debugOptions.Count
+                        ? debugOptions[optionDefaultIndex].Id
                         : string.Empty;
                 };
                 break;
@@ -970,8 +1056,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         }
 
         PositionChoicePopup(source, visibleRows);
-        _choicePopupRoot.SetAsLastSibling();
-        _choicePopupRoot.gameObject.SetActive(true);
+        ActivateChoicePopup(source);
     }
 
     private void PositionChoicePopup(RectTransform source, int visibleItemCount)
@@ -1156,8 +1241,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         });
 
         RenderResults();
-        _choicePopupRoot.SetAsLastSibling();
-        _choicePopupRoot.gameObject.SetActive(true);
+        ActivateChoicePopup(source);
         searchInput.ActivateInputField();
         EventSystem.current?.SetSelectedGameObject(searchInput.gameObject);
     }
@@ -1281,8 +1365,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         }
 
         PositionChoicePopup(source, rows);
-        _choicePopupRoot.SetAsLastSibling();
-        _choicePopupRoot.gameObject.SetActive(true);
+        ActivateChoicePopup(source);
         searchInput.ActivateInputField();
         EventSystem.current?.SetSelectedGameObject(searchInput.gameObject);
     }
@@ -1305,12 +1388,29 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
 
     private void HideChoicePopup()
     {
-        if (_choicePopupRoot == null)
+        if (_choicePopupRoot == null || !_choicePopupRoot.gameObject.activeSelf)
         {
             return;
         }
 
         _choicePopupRoot.gameObject.SetActive(false);
+        _popupDismissPosition = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
+        _popupDismissFrame = Time.frameCount;
+        _choiceBlocker.color = Color.clear;
+        if (_choiceReturnSelection != null && _choiceReturnSelection.activeInHierarchy && EventSystem.current != null)
+        {
+            EventSystem.current.SetSelectedGameObject(_choiceReturnSelection);
+        }
+    }
+
+    private void ActivateChoicePopup(RectTransform source)
+    {
+        _choiceReturnSelection = source.gameObject;
+        _choiceBlocker.color = new Color(0f, 0f, 0f, .48f);
+        _choiceBlocker.transform.SetAsLastSibling();
+        _choiceBlocker.gameObject.SetActive(true);
+        _choicePopupRoot.SetAsLastSibling();
+        _choicePopupRoot.gameObject.SetActive(true);
     }
 
     private static int ParseInt(DebugArgumentDefinition argument, string raw)
@@ -1405,6 +1505,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     {
         _selectedCommand = null;
         _valueReaders.Clear();
+        _optionInitializers.Clear();
         foreach (Transform child in _argumentContent)
         {
             child.gameObject.SetActive(false);
@@ -1439,9 +1540,11 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     {
         for (int i = 0; i < _commandRows.Count; i++)
         {
-            _commandRows[i].color = _rowViews[i].CommandIndex == _selectedIndex
-                ? new Color(0.12f, 0.35f, 0.50f, 0.92f)
-                : new Color(1f, 1f, 1f, 0.04f);
+            int index = _rowViews[i].CommandIndex;
+            if (index < 0 || index >= _visibleCommands.Count) continue;
+            Color accent = GetCategoryColor(_visibleCommands[index].Category);
+            _commandRows[i].color = Color.Lerp(new Color(.04f, .05f, .07f), accent, index == _selectedIndex ? .48f : .10f);
+            _rowViews[i].SetCategoryColor(accent);
         }
     }
 

@@ -17,6 +17,8 @@
 | StoryGraph | `StoryGraph/` | ノードグラフのRuntimeとEditor。詳細は`StoryGraph/README.md` |
 | Editor | `Editor/` | 再利用可能なUnity Editorツール |
 
+展示ログのライターは通常 `Application.persistentDataPath/ExhibitionLogs` を使う。Editor限定の `EditorLogDirectoryOverride` は入力E2Eなどで既存ログを変更しないための一時出力先であり、ビルドには含まれない。`ExhibitionLogManager.TryGetActiveSession` は有効なプレイ中だけ既存のセッションIDと端末IDを返し、戦闘リプレイとの対応付けに使う。プレイを開始・終了したり新たなIDを作ったりしない。
+
 ## 本体との境界
 
 - 本体は `Assets/Scripts/`、ライブラリは `Assets/Scripts/EIGHTAIDLib/` に置く。
@@ -33,7 +35,8 @@
 - ローカライズ: `Scripts/Localization/README.md`
 - デバッグコマンド: `Scripts/Debug/Core/DebugCommandRegistry.cs`
 - コマンドUI: `Scripts/Debug/UI/RuntimeDebugPanel.cs`（初回表示時に構築、分類は `大分類 / 細分類`）。`RuntimeDebugCommandRow`を表示範囲だけ再利用し、EventSystemの選択・上下移動をコマンド詳細へ接続する。`DebugUiFactory.CreateScrollContent`の`automaticLayout=false`で手動配置する。既定値は従来の自動Layout。検索条件の共有には`DebugCommandRegistry.MatchesSearch`を使う。大分類の表示順はホストが`SetCategoryOrder`で指定でき、省略時はカテゴリ名順。Canvas参照は`RuntimeDebugPanel.DebugCanvas`から取得でき、未構築時はnull。
-- シナリオテスト: `Scripts/Debug/ScenarioTests/DebugScenarioTestPanelSpec.md`
+  - コマンドUIは初回の枠表示と一覧生成を別フレームに分け、候補欄は条件付き表示時に取得する。候補ポップアップは背後のポインター入力を遮断し、閉じた時の選択元へ戻す。閉じる操作と静止中のホバーを遮断し、次のクリック・スクロール、またはボタン解放後の6pxより大きな移動で解除する。Input Systemの`onAfterUpdate`でEventSystemのRaycast前に解除し、同じ位置の再クリックや移動と同時のクリックも受け付ける。大分類の登録順の配色はボタン・行の分類名・詳細へ共用する。`DebugUiFactory`のボタン・入力欄は選択・ホバー時の色を共通設定する。
+  - シナリオテスト: `Scripts/Debug/ScenarioTests/DebugScenarioTestPanelSpec.md`
 
 ## 変更時チェック
 

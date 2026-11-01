@@ -46,6 +46,7 @@ public static class DebugUiFactory
 
         Button button = buttonObject.GetComponent<Button>();
         button.targetGraphic = image;
+        SetFocusColors(button);
         button.onClick.AddListener(() => onClick?.Invoke());
 
         Text label = CreateLabel(buttonObject.GetComponent<RectTransform>(), font, 14, TextAnchor.MiddleLeft, Color.white);
@@ -102,6 +103,7 @@ public static class DebugUiFactory
         input.placeholder = placeholderText;
         input.lineType = InputField.LineType.SingleLine;
         input.targetGraphic = image;
+        SetFocusColors(input);
         return input;
     }
 
@@ -271,7 +273,7 @@ public static class DebugUiFactory
         Image image = buttonObject.GetComponent<Image>();
         image.sprite = sprite;
         image.type = Image.Type.Sliced;
-        image.color = new Color(1f, 1f, 1f, 0.14f);
+        image.color = new Color(.18f, .23f, .28f);
 
         LayoutElement buttonLayout = buttonObject.GetComponent<LayoutElement>();
         buttonLayout.preferredWidth = 420f;
@@ -292,7 +294,17 @@ public static class DebugUiFactory
 
         Button button = buttonObject.GetComponent<Button>();
         button.targetGraphic = image;
+        SetFocusColors(button);
         return button;
+    }
+
+    private static void SetFocusColors(Selectable selectable)
+    {
+        ColorBlock colors = selectable.colors;
+        colors.highlightedColor = new Color(1.1f, 1.3f, 1.5f);
+        colors.selectedColor = new Color(1.2f, 1.7f, 2.4f);
+        colors.pressedColor = new Color(.7f, .9f, 1.1f);
+        selectable.colors = colors;
     }
 
     public static RectTransform CreateScrollContent(RectTransform parent, Sprite sprite, float height, bool expandHeight = false, bool automaticLayout = true)

@@ -50,6 +50,11 @@ public sealed class RuntimeDebugCommandRow : Button
         _select?.Invoke(CommandIndex);
     }
 
+    public void SetCategoryColor(Color color)
+    {
+        _category.color = color;
+    }
+
     public override void OnPointerEnter(PointerEventData eventData)
     {
         base.OnPointerEnter(eventData);

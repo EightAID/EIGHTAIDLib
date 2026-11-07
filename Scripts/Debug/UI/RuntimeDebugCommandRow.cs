@@ -9,6 +9,7 @@ public sealed class RuntimeDebugCommandRow : Button
 {
     public int CommandIndex { get; private set; }
     private DebugCommand _command;
+    private string _search;
     private Text _category;
     private Text _title;
     private Text _description;
@@ -24,10 +25,10 @@ public sealed class RuntimeDebugCommandRow : Button
         _move = move;
     }
 
-    public void Bind(DebugCommand command, int index)
+    public void Bind(DebugCommand command, int index, string search = "")
     {
         CommandIndex = index;
-        if (ReferenceEquals(_command, command))
+        if (ReferenceEquals(_command, command) && _search == search)
         {
             return;
         }
@@ -37,11 +38,12 @@ public sealed class RuntimeDebugCommandRow : Button
             EventSystem.current.SetSelectedGameObject(null);
         }
         _command = command;
+        _search = search;
         name = command.Id + "Row";
-        int separator = command.Category.LastIndexOf(" / ", StringComparison.Ordinal);
-        _category.text = separator < 0 ? command.Category : command.Category.Substring(separator + 3);
+        _category.text = command.Category;
         _title.text = command.Label;
-        _description.text = command.Description;
+        string match = new DebugSearchQuery(search).Explain(command.Label, command.SearchFields);
+        _description.text = string.IsNullOrEmpty(match) ? command.Description : match;
     }
 
     public override void OnSelect(BaseEventData eventData)

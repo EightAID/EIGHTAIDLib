@@ -17,7 +17,7 @@ public static class DebugCommandRegistry
         }
     }
 
-    private static int GetCategoryOrder(string category)
+    public static int GetCategoryOrder(string category)
     {
         int separator = category.IndexOf(" / ", StringComparison.Ordinal);
         string group = separator < 0 ? category : category.Substring(0, separator);
@@ -68,12 +68,7 @@ public static class DebugCommandRegistry
 
     public static bool MatchesSearch(DebugCommand command, string searchText)
     {
-        searchText = searchText?.Trim();
-        if (string.IsNullOrEmpty(searchText)) return true;
-        return Contains(command.Id, searchText) ||
-               Contains(command.Label, searchText) ||
-               Contains(command.Category, searchText) ||
-               Contains(command.Description, searchText);
+        return new DebugSearchQuery(searchText).Score(command.Label, command.SearchFields) >= 0;
     }
 
     private static bool Contains(string source, string value)

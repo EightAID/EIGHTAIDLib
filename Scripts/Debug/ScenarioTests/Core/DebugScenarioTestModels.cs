@@ -1,7 +1,15 @@
 #if UNITY_EDITOR || EIGHTAID_TEST_BUILD
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
+
+public enum DebugScenarioTestUsage
+{
+    Automated,
+    Setup,
+    Presentation,
+}
 
 public enum DebugScenarioTestStepKind
 {
@@ -168,8 +176,15 @@ public sealed class DebugScenarioTestCase : ScriptableObject
     [TextArea(2, 5)]
     [SerializeField] private string failureInvestigationHint;
     [SerializeField] private string requiredScene;
+    [SerializeField] private DebugScenarioTestUsage usage;
     [SerializeField] private List<DebugScenarioTestStep> steps = new List<DebugScenarioTestStep>();
 
+    public DebugScenarioTestUsage Usage { get => usage; set => usage = value; }
+    public string UsageLabel => usage == DebugScenarioTestUsage.Setup ? "操作開始用" :
+        usage == DebugScenarioTestUsage.Presentation ? "演出確認" : "自動検証";
+    public string[] SearchFields => new[] { Id, Category, Summary, Purpose, Preconditions, ExpectedResult, RequiredScene, UsageLabel }
+        .Concat(Steps.Where(step => step != null).SelectMany(step => new[] { step.DisplayName, step.Description, step.CommandId, step.ExpectedSummary }
+            .Concat(step.Arguments.Select(argument => argument.Key + " " + argument.Value)))).ToArray();
     public string Id { get => id; set => id = value; }
     public string DisplayName { get => displayName; set => displayName = value; }
     public string Category { get => category; set => category = value; }

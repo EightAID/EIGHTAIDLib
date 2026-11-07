@@ -126,7 +126,8 @@ public static class DebugScenarioTestRegistry
             .Where(test => test != null)
             .GroupBy(test => test.Id, StringComparer.Ordinal)
             .Select(group => group.Last())
-            .OrderBy(test => test.Category, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(test => DebugCommandRegistry.GetCategoryOrder(test.Category))
+            .ThenBy(test => test.Category, StringComparer.OrdinalIgnoreCase)
             .ThenBy(test => test.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }

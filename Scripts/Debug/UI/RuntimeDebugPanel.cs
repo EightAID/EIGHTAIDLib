@@ -78,6 +78,8 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     private DebugCommand _selectedCommand;
     private int _selectedIndex;
     private string _selectedCategory = string.Empty;
+    private bool _searchAllCategories = true;
+    private Button _searchScopeButton;
     private bool _hasPausedGame;
     private bool _inputBlockedBeforeVisible;
     private float _resumeTimeScale = 1f;
@@ -288,12 +290,18 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         RectTransform right = CreatePanelSection(main, "CommandInspector", 620f, 0.95f);
         RectTransform log = CreateLogPanel(_panelRoot, font, sprite);
 
-        _searchInput = DebugUiFactory.CreateInputField(header, font, sprite, "> コマンド名、カテゴリ、IDで検索");
+        _searchInput = DebugUiFactory.CreateInputField(header, font, sprite, "> 複数語で検索（例: 章 開始 / ギャラリー 解放）");
         _searchInput.textComponent.fontSize = 22;
         ((Text)_searchInput.placeholder).fontSize = 18;
         _searchInput.onValueChanged.AddListener(_ => _refreshPending = true);
         DebugUiFactory.CreateButton(header, font, sprite, "検索クリア", () => _searchInput.text = string.Empty, 112f, 36f);
 
+        _searchScopeButton = DebugUiFactory.CreateButton(left, font, sprite, "検索範囲: 全分類", () =>
+        {
+            _searchAllCategories = !_searchAllCategories;
+            _searchScopeButton.GetComponentInChildren<Text>().text = _searchAllCategories ? "検索範囲: 全分類" : "検索範囲: 現在の分類";
+            RefreshCommandList();
+        }, 260f, 30f);
         CreateSectionTitle(left, font, "コマンド一覧");
         _categoryFilterContent = CreateCategoryFilterBar(left);
         _subcategoryButton = DebugUiFactory.CreateButton(left, font, sprite, "すべての分類  ▾", ShowSubcategoryChoices, 260f, 32f);
@@ -306,6 +314,17 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         _emptyCommandText.text = "該当するコマンドがありません。検索や分類を変更してください。";
         DebugUiFactory.Stretch(_emptyCommandText.rectTransform, 12f, 12f, 12f, 12f);
         _emptyCommandText.raycastTarget = false;
+        var resetCategory = DebugUiFactory.CreateButton(_commandScroll.viewport, font, sprite, "分類を解除", () =>
+        {
+            _selectedCategory = string.Empty;
+            RefreshCommandList();
+        }, 160f, 32f);
+        resetCategory.name = "ResetCategory";
+        resetCategory.GetComponent<LayoutElement>().ignoreLayout = true;
+        var resetRect = (RectTransform)resetCategory.transform;
+        resetRect.anchorMin = resetRect.anchorMax = new Vector2(.5f, .35f);
+        resetRect.sizeDelta = new Vector2(160f, 32f);
+        resetCategory.gameObject.SetActive(false);
         _emptyCommandText.gameObject.SetActive(false);
 
         CreateSectionTitle(right, font, "詳細と引数");
@@ -625,13 +644,16 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
         var context = new DebugCommandContext(new DebugArgumentValues());
         IReadOnlyList<DebugCommand> allCommands = DebugCommandRegistry.GetVisibleCommands(context, string.Empty);
         RefreshCategoryFilters(allCommands, font, sprite);
-        _visibleCommands = allCommands.Where(command => MatchesCategory(command.Category, _selectedCategory) &&
-            DebugCommandRegistry.MatchesSearch(command, search)).ToArray();
+        var query = new DebugSearchQuery(search);
+        _visibleCommands = allCommands.Where(command => (MatchesCategory(command.Category, _selectedCategory) ||
+                (_searchAllCategories && !query.IsEmpty)) && query.Score(command.Label, command.SearchFields) >= 0)
+            .OrderByDescending(command => query.Score(command.Label, command.SearchFields)).ToArray();
 
         int previousIndex = _selectedCommand == null ? -1 : Array.FindIndex((DebugCommand[])_visibleCommands, command => ReferenceEquals(command, _selectedCommand));
         _selectedIndex = previousIndex >= 0 ? previousIndex : 0;
         _commandCountText.text = $"{_visibleCommands.Count} 件 / 全 {allCommands.Count} 件  ·  ↑↓ 選択  /  Enter 実行  /  Esc 閉じる";
         _emptyCommandText.gameObject.SetActive(_visibleCommands.Count == 0);
+        _commandScroll.viewport.Find("ResetCategory").gameObject.SetActive(_visibleCommands.Count == 0);
         _commandListContent.sizeDelta = new Vector2(_commandListContent.sizeDelta.x, _visibleCommands.Count * CommandRowStride + 10f);
         _commandScroll.StopMovement();
         EnsureSelectedCommandInView();
@@ -747,7 +769,7 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
             row.gameObject.SetActive(i < count);
             if (i >= count) continue;
             int index = first + i;
-            row.Bind(_visibleCommands[index], index);
+            row.Bind(_visibleCommands[index], index, _searchInput.text);
             var rect = (RectTransform)row.transform;
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = Vector2.one;
@@ -1374,10 +1396,11 @@ public sealed class RuntimeDebugPanel : MonoBehaviour
     {
         var matches = new List<int>();
         string normalizedSearch = string.IsNullOrWhiteSpace(search) ? string.Empty : search.Trim();
+        var query = new DebugSearchQuery(normalizedSearch);
         for (int i = 0; i < options.Count; i++)
         {
             string option = options[i] ?? string.Empty;
-            if (normalizedSearch.Length == 0 || option.IndexOf(normalizedSearch, StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalizedSearch.Length == 0 || query.Score(option) >= 0)
             {
                 matches.Add(i);
             }

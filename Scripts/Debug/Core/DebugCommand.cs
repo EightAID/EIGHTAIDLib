@@ -1,6 +1,7 @@
 #if UNITY_EDITOR || EIGHTAID_TEST_BUILD
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Cysharp.Threading.Tasks;
 
 public sealed class DebugCommand
@@ -33,6 +34,7 @@ public sealed class DebugCommand
     public string Label { get; }
     public string Category { get; }
     public string Description { get; }
+    public string[] SearchFields => new[] { Id, Category, Description }.Concat(Arguments.Select(argument => argument.Key + " " + argument.Label)).ToArray();
     public IReadOnlyList<DebugArgumentDefinition> Arguments { get; }
     public bool ClosePanelAfterExecute { get; }
     public Func<DebugCommandContext, bool> IsVisiblePredicate { get; }

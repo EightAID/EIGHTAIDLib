@@ -26,6 +26,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
     private const string SecondaryFontAssetPath = "Assets/Fonts/Morisawa/BO-A1GothicStdN-Medium.otf";
 
     private static DebugScenarioTestPanel _instance;
+    public static bool IsRunning => _instance != null && _instance._isRunning;
     private static Sprite _fallbackSprite;
 
     private readonly DebugScenarioTestRunner _runner = new DebugScenarioTestRunner();
@@ -56,6 +57,11 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
     private readonly HashSet<string> _rangeSelectedTestIds = new HashSet<string>(StringComparer.Ordinal);
     private DebugScenarioTestCase _selectedTest;
     private string _selectedCategory = string.Empty;
+    private bool _searchAllCategories = true;
+    private Dropdown _subcategoryDropdown;
+    private Button _searchScopeButton;
+    private Text _searchSummary;
+    private DebugScenarioTestUsage? _selectedUsage;
     private DebugScenarioTestStatus? _selectedResultStatus;
     private bool _isRunning;
     private bool _stopRequested;
@@ -162,7 +168,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         title.text = "テスト画面  F2";
         title.GetComponent<LayoutElement>().preferredWidth = 280f;
 
-        _searchInput = DebugUiFactory.CreateInputField(header, font, sprite, "テスト名、カテゴリ、説明で検索");
+        _searchInput = DebugUiFactory.CreateInputField(header, font, sprite, "複数語検索（例: 章 開始）");
         _searchInput.textComponent.fontSize = 18;
         _searchInput.onValueChanged.AddListener(_ => RefreshTestList());
 
@@ -176,8 +182,36 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         Button clearButton = DebugUiFactory.CreateButton(header, font, sprite, "結果クリア", ClearResults, 120f, 38f);
         clearButton.GetComponent<Image>().color = new Color(0.24f, 0.25f, 0.28f, 0.96f);
 
+        var searchActions = CreateFilterActions(left);
+        _searchScopeButton = DebugUiFactory.CreateButton(searchActions, font, sprite, "検索範囲: 全分類", () =>
+        {
+            _searchAllCategories = !_searchAllCategories;
+            _searchScopeButton.GetComponentInChildren<Text>().text = _searchAllCategories ? "検索範囲: 全分類" : "検索範囲: 現在の分類";
+            RefreshTestList();
+        }, 230f, 32f);
+        DebugUiFactory.CreateButton(searchActions, font, sprite, "検索クリア", () => _searchInput.text = string.Empty, 120f, 32f);
+        DebugUiFactory.CreateButton(searchActions, font, sprite, "分類を解除", () => { _selectedCategory = string.Empty; RefreshTestList(); }, 120f, 32f);
         CreateSectionTitle(left, font, "カテゴリ");
         _categoryContent = CreateCategoryBar(left);
+        _subcategoryDropdown = DebugUiFactory.CreateDropdownRow(left, font, sprite, "細分類");
+        _subcategoryDropdown.onValueChanged.AddListener(index =>
+        {
+            string group = DebugCategory.Group(_selectedCategory);
+            string[] categories = GetSubcategories(group);
+            _selectedCategory = index == 0 ? group : categories[index - 1];
+            RefreshTestList();
+        });
+        var usageActions = CreateFilterActions(left);
+        DebugUiFactory.CreateButton(usageActions, font, sprite, "用途: すべて", () => { _selectedUsage = null; RefreshTestList(); }, 120f, 30f);
+        foreach (DebugScenarioTestUsage usage in Enum.GetValues(typeof(DebugScenarioTestUsage)))
+        {
+            var value = usage;
+            string label = usage == DebugScenarioTestUsage.Setup ? "操作開始用" : usage == DebugScenarioTestUsage.Presentation ? "演出確認" : "自動検証";
+            var button = DebugUiFactory.CreateButton(usageActions, font, sprite, label, () => { _selectedUsage = value; RefreshTestList(); }, 120f, 30f);
+            button.name = "Usage" + usage;
+        }
+        _searchSummary = DebugUiFactory.CreateLabel(left, font, 12, TextAnchor.MiddleLeft, Color.white);
+        _searchSummary.GetComponent<LayoutElement>().preferredHeight = 34f;
         CreateSectionTitle(left, font, "結果フィルタ");
         _resultFilterContent = CreateResultFilterBar(left);
         _resultSummaryText = DebugUiFactory.CreateLabel(left, font, 13, TextAnchor.MiddleLeft, new Color(0.70f, 0.78f, 0.84f));
@@ -288,9 +322,14 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         RefreshResultSummary();
 
         IEnumerable<DebugScenarioTestCase> tests = _allTests;
-        if (!string.IsNullOrWhiteSpace(_selectedCategory))
+        var query = new DebugSearchQuery(search);
+        if (!string.IsNullOrWhiteSpace(_selectedCategory) && !(_searchAllCategories && !query.IsEmpty))
         {
-            tests = tests.Where(test => string.Equals(test.Category, _selectedCategory, StringComparison.Ordinal));
+            tests = tests.Where(test => DebugCategory.Matches(test.Category, _selectedCategory));
+        }
+        if (_selectedUsage.HasValue)
+        {
+            tests = tests.Where(test => test.Usage == _selectedUsage.Value);
         }
 
         if (_selectedResultStatus.HasValue)
@@ -300,10 +339,13 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            tests = tests.Where(test => Matches(test, search));
+            tests = tests.Where(test => query.Score(test.DisplayName, test.SearchFields) >= 0);
         }
 
-        _visibleTests = tests.ToArray();
+        _visibleTests = tests.OrderByDescending(test => query.Score(test.DisplayName, test.SearchFields)).ToArray();
+        _searchSummary.text = $"{_visibleTests.Count}件 / 全{_allTests.Count}件" +
+            (_selectedUsage.HasValue ? "  · 用途: " + (_selectedUsage == DebugScenarioTestUsage.Setup ? "操作開始用" : _selectedUsage == DebugScenarioTestUsage.Presentation ? "演出確認" : "自動検証") : "  · 用途: すべて") +
+            (_visibleTests.Count == 0 ? "  検索・分類・用途・結果を変更してください。" : "");
         foreach (DebugScenarioTestCase test in _visibleTests)
         {
             DebugScenarioTestCase captured = test;
@@ -339,24 +381,33 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             .Where(test => test != null && !string.IsNullOrWhiteSpace(test.Category))
             .Select(test => test.Category)
             .Distinct(StringComparer.Ordinal)
-            .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(DebugCommandRegistry.GetCategoryOrder)
+            .ThenBy(category => category, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        if (!string.IsNullOrWhiteSpace(_selectedCategory) && !categories.Contains(_selectedCategory))
+        if (!string.IsNullOrWhiteSpace(_selectedCategory) && !categories.Any(category => DebugCategory.Matches(category, _selectedCategory)))
         {
             _selectedCategory = string.Empty;
         }
 
         CreateCategoryButton("すべて", string.Empty, font, sprite);
-        foreach (string category in categories)
+        foreach (string group in categories.Select(DebugCategory.Group).Distinct())
         {
-            CreateCategoryButton(category, category, font, sprite);
+            CreateCategoryButton(group, group, font, sprite);
+        }
+        if (_subcategoryDropdown != null)
+        {
+            var group = DebugCategory.Group(_selectedCategory);
+            string[] subcategories = GetSubcategories(group);
+            _subcategoryDropdown.ClearOptions();
+            _subcategoryDropdown.AddOptions(new[] { "すべて" }.Concat(subcategories).ToList());
+            _subcategoryDropdown.SetValueWithoutNotify(Array.IndexOf(subcategories, _selectedCategory) + 1);
         }
     }
 
     private void CreateCategoryButton(string label, string value, Font font, Sprite sprite)
     {
-        bool selected = string.Equals(_selectedCategory, value, StringComparison.Ordinal);
+        bool selected = string.Equals(DebugCategory.Group(_selectedCategory), value, StringComparison.Ordinal);
         Color categoryColor = GetCategoryColor(value);
         Button button = DebugUiFactory.CreateButton(_categoryContent, font, sprite, ShortenCategoryLabel(label), () =>
         {
@@ -538,7 +589,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         _titleText.text = _selectedTest.DisplayName;
         _summaryText.text = _selectedTest.Summary;
         _detailText.text =
-            $"カテゴリ: {_selectedTest.Category}\n" +
+            $"カテゴリ: {_selectedTest.Category}  / 用途: {_selectedTest.UsageLabel}\n" +
             $"目的: {_selectedTest.Purpose}\n" +
             $"前提: {_selectedTest.Preconditions}\n" +
             $"期待結果: {_selectedTest.ExpectedResult}";
@@ -546,7 +597,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         DebugScenarioTestRunResult runResult = GetResult(_selectedTest);
         _statusText.color = GetStatusColor(runResult != null ? runResult.Status : DebugScenarioTestStatus.NotRun);
         _statusText.text = runResult == null
-            ? "未実行"
+            ? (_selectedTest.Usage == DebugScenarioTestUsage.Automated ? "未実行" : "準備・演出到達までを判定します。その後の操作は手動で確認してください。")
             : BuildStatusDetail(_selectedTest, runResult);
 
         _llmInstructionText.text = BuildFailureInstructionText(_selectedTest, runResult);
@@ -628,8 +679,8 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
             return;
         }
 
-        DebugScenarioTestCase[] tests = _allTests
-            .Where(test => test != null && string.Equals(test.Category, category, StringComparison.Ordinal))
+        DebugScenarioTestCase[] tests = _visibleTests
+            .Where(test => test != null && DebugCategory.Matches(test.Category, category))
             .ToArray();
         await RunManyAsync(tests);
     }
@@ -826,17 +877,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
 
     private static bool Matches(DebugScenarioTestCase test, string search)
     {
-        return Contains(test.Id, search) ||
-               Contains(test.DisplayName, search) ||
-               Contains(test.Category, search) ||
-               Contains(test.Summary, search) ||
-               Contains(test.Purpose, search);
-    }
-
-    private static bool Contains(string source, string value)
-    {
-        return !string.IsNullOrEmpty(source) &&
-               source.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
+        return new DebugSearchQuery(search).Score(test.DisplayName, test.SearchFields) >= 0;
     }
 
     private DebugScenarioTestStatus ResolveStatus(DebugScenarioTestCase test)
@@ -869,7 +910,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
 
     private Image CreateTestRow(RectTransform parent, Font font, Sprite sprite, DebugScenarioTestCase test, Action onClick)
     {
-        var row = new GameObject(test.Id + "Row", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        var row = new GameObject(test.Id + "Row", typeof(RectTransform), typeof(Image), typeof(DebugScenarioTestRow), typeof(LayoutElement));
         row.transform.SetParent(parent, false);
         row.GetComponent<LayoutElement>().preferredHeight = 62f;
 
@@ -880,6 +921,7 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
 
         Button button = row.GetComponent<Button>();
         button.targetGraphic = image;
+        ((DebugScenarioTestRow)button).Selected = () => { if (_selectedTest != test) SelectTest(test); };
         button.onClick.AddListener(() => onClick?.Invoke());
 
         DebugScenarioTestRunResult result = GetResult(test);
@@ -904,13 +946,14 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         mark.rectTransform.anchoredPosition = new Vector2(0f, 0f);
 
         Text title = DebugUiFactory.CreateLabel(row.GetComponent<RectTransform>(), font, 16, TextAnchor.UpperLeft, Color.white);
-        title.text = test.DisplayName;
+        title.text = $"[{test.UsageLabel}] {test.DisplayName}";
         title.verticalOverflow = VerticalWrapMode.Truncate;
         title.GetComponent<LayoutElement>().ignoreLayout = true;
         DebugUiFactory.Stretch(title.rectTransform, 54f, 8f, 12f, 32f);
 
         Text sub = DebugUiFactory.CreateLabel(row.GetComponent<RectTransform>(), font, 12, TextAnchor.LowerLeft, new Color(0.66f, 0.73f, 0.80f));
-        sub.text = $"{test.Category}    {Truncate(test.Summary, 70)}";
+        string match = new DebugSearchQuery(_searchInput.text).Explain(test.DisplayName, test.SearchFields);
+        sub.text = $"{test.Category}    {Truncate(string.IsNullOrEmpty(match) ? test.Summary : match, 70)}";
         sub.verticalOverflow = VerticalWrapMode.Truncate;
         sub.GetComponent<LayoutElement>().ignoreLayout = true;
         DebugUiFactory.Stretch(sub.rectTransform, 54f, 34f, 12f, 6f);
@@ -1223,11 +1266,31 @@ public sealed class DebugScenarioTestPanel : MonoBehaviour
         return section.GetComponent<RectTransform>();
     }
 
+    private string[] GetSubcategories(string group)
+    {
+        return _allTests.Select(test => test.Category).Distinct()
+            .Where(category => DebugCategory.Matches(category, group) && category != group)
+            .OrderBy(category => category, StringComparer.Ordinal).ToArray();
+    }
+
+    private static RectTransform CreateFilterActions(RectTransform parent)
+    {
+        var row = new GameObject("FilterActions", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+        row.GetComponent<LayoutElement>().preferredHeight = 32f;
+        var layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 6f;
+        layout.childControlHeight = true;
+        layout.childControlWidth = true;
+        layout.childForceExpandWidth = true;
+        return (RectTransform)row.transform;
+    }
+
     private static RectTransform CreateCategoryBar(RectTransform parent)
     {
         var bar = new GameObject("CategoryBar", typeof(RectTransform), typeof(GridLayoutGroup), typeof(LayoutElement));
         bar.transform.SetParent(parent, false);
-        bar.GetComponent<LayoutElement>().preferredHeight = 70f;
+        bar.GetComponent<LayoutElement>().preferredHeight = 36f;
 
         GridLayoutGroup layout = bar.GetComponent<GridLayoutGroup>();
         layout.cellSize = new Vector2(92f, 30f);
